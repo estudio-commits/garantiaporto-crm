@@ -2,13 +2,14 @@ import { z } from "zod";
 export const states = {
   completion: ["parte_1_recibida", "completo", "carga_manual"],
   contact_status: ["no_contactado", "contactado"],
-  stage: [
-    "nuevo",
-    "en_gestion",
-    "en_preaprobacion",
-    "esperando_respuesta",
-    "finalizado",
-    "descartado",
+  stage: ["nuevo", "en_contacto", "finalizado"],
+  guarantee_stage: [
+    "sin_contactar",
+    "documentacion_solicitada",
+    "documentacion_recibida",
+    "preaprobacion_cargada",
+    "aprobada",
+    "rechazada",
   ],
   preapproval: ["no_iniciada", "en_proceso", "preaprobado", "no_preaprobado"],
   documentation: [
@@ -25,14 +26,28 @@ export const labels: Record<string, string> = {
   completion: "Formulario",
   contact_status: "Contacto",
   stage: "Estado comercial",
+  guarantee_stage: "Proceso de la garantía",
   preapproval: "Preaprobación interna",
   documentation: "Documentación",
   decision: "Decisión formal Porto",
   clearing: "Clearing",
 };
 export const human = (s: string) =>
-  ({ en_preaprobacion: "En preaprobación", finalizado: "Finalizado" })[s] ||
-  s.replaceAll("_", " ").replace(/^./, (c) => c.toUpperCase());
+  (
+    ({
+      nuevo: "Nuevo cliente",
+      en_contacto: "En contacto",
+      finalizado: "Finalizado",
+      sin_contactar: "Sin contactar",
+      documentacion_solicitada: "Solicitada la documentación",
+      documentacion_recibida: "Recibimos documentación",
+      preaprobacion_cargada: "Cargada la preaprobación",
+      ingresos_insuficientes: "Ingresos insuficientes",
+      score_insuficiente: "Score insuficiente",
+      documentacion_insuficiente: "Documentación insuficiente",
+      clearing: "Estar en el Clearing",
+    }) as Record<string, string>
+  )[s] || s.replaceAll("_", " ").replace(/^./, (c) => c.toUpperCase());
 export type Profile = {
   id: string;
   full_name: string;
@@ -57,6 +72,9 @@ export type Application = {
   completion: string;
   contact_status: string;
   stage: string;
+  guarantee_stage?: string;
+  requested_date?: string | null;
+  drive_folder_url?: string | null;
   preapproval: string;
   documentation: string;
   decision: string;
@@ -80,10 +98,13 @@ export type Audit = {
   action: string;
   created_at: string;
   changes?: unknown;
+  visibility?: "case" | "admin" | "clearing";
+  actor_name?: string | null;
 };
 export type Sensitive = {
   application_id: string;
   national_id: string;
+  rejection_reason?: string | null;
   monthly_income: number | null;
 };
 export type Clearing = {

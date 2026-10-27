@@ -9,5 +9,9 @@ for attempt in {1..30}; do
  sleep 1
 done
 docker exec -i "$container" psql -U postgres -v ON_ERROR_STOP=1 < tests/bootstrap.sql
-for migration in supabase/migrations/*.sql; do docker exec -i "$container" psql -U postgres -v ON_ERROR_STOP=1 < "$migration"; done
+for migration in supabase/migrations/*.sql; do
+ if [[ "$migration" == *006_separate_workflows.sql ]]; then docker exec -i "$container" psql -U postgres -v ON_ERROR_STOP=1 < tests/upgrade-before.sql; fi
+ docker exec -i "$container" psql -U postgres -v ON_ERROR_STOP=1 < "$migration"
+ if [[ "$migration" == *006_separate_workflows.sql ]]; then docker exec -i "$container" psql -U postgres -v ON_ERROR_STOP=1 < tests/upgrade-after.sql; fi
+done
 docker exec -i "$container" psql -U postgres -v ON_ERROR_STOP=1 < tests/database.sql

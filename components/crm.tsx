@@ -27,7 +27,15 @@ import {
 } from "lucide-react";
 import { supabase } from "@/lib/supabase";
 import UserCreator from "./user-creator";
-import EventViewer from "./event-viewer";
+import CaseDetail from "./case-detail";
+import Dialog from "./dialog";
+import {
+  demoMutation,
+  needsFollowUp,
+  todayUy,
+  terminal,
+  rejectionReasons,
+} from "@/lib/workflow";
 import Pipeline from "./pipeline";
 import SourceManager from "./source-manager";
 import ApprovalMetrics from "./approval-metrics";
@@ -96,6 +104,12 @@ export default function CRM() {
     [ready, setReady] = useState(false),
     [page, setPage] = useState("Inicio"),
     [selected, setSelected] = useState<string | null>(null),
+    [preview, setPreview] = useState<string | null>(null),
+    [decisionTarget, setDecisionTarget] = useState<{
+      id: string;
+      stage: string;
+    } | null>(null),
+    [now, setNow] = useState(Date.now()),
     [search, setSearch] = useState(""),
     [filter, setFilter] = useState("todos"),
     [showFilters, setShowFilters] = useState(false),
@@ -110,6 +124,10 @@ export default function CRM() {
     [message, setMessage] = useState(""),
     [busy, setBusy] = useState(false),
     [integration, setIntegration] = useState<Record<string, unknown>[]>([]);
+  useEffect(() => {
+    const timer = setInterval(() => setNow(Date.now()), 60000);
+    return () => clearInterval(timer);
+  }, []);
   async function load() {
     if (!supabase) return;
     const {
@@ -195,44 +213,102 @@ export default function CRM() {
           );
         await load();
       } else {
-        setStore((s) => {
-          const rows = s[k] as unknown as Record<string, unknown>[];
-          const compound = (r: Record<string, unknown>) =>
-            r[match] === value[match] &&
-            (k !== "values" || r.field_id === value.field_id);
-          const found = rows.some(compound);
-          const updated =
-            mode === "insert" || (mode === "upsert" && !found)
-              ? [value, ...rows]
-              : rows.map((r) => (compound(r) ? { ...r, ...value } : r));
-          const aid =
-            k === "applications"
-              ? String(value.id)
-              : value.application_id
-                ? String(value.application_id)
-                : null;
-          return {
-            ...s,
-            [k]: updated,
-            audits: aid
-              ? [
-                  {
-                    id: crypto.randomUUID(),
-                    application_id: aid,
-                    actor_id: profile?.id ?? null,
-                    action: `${tables[k]}:${mode}`,
-                    created_at: new Date().toISOString(),
-                  },
-                  ...s.audits,
-                ]
-              : s.audits,
-          };
-        });
+        setStore(demoMutation(store, k, value, mode, match, profile!));
       }
       return true;
     } catch (e) {
       setMessage(e instanceof Error ? e.message : "No se pudo guardar");
       return false;
+    } finally {
+      setBusy(false);
+    }
+  }
+  async function changeGuarantee(id: string, stage: string) {
+    const a = store.applications.find((a) => a.id === id);
+    if (!a || !profile) return false;
+    if (terminal(stage)) {
+      if (profile.role !== "admin") {
+        setMessage("Solo administración puede confirmar decisiones formales.");
+        return false;
+      }
+      setDecisionTarget({ id, stage });
+      return false;
+    }
+    if (terminal(a.guarantee_stage) && profile.role !== "admin") {
+      setMessage("Solo administración puede reabrir una decisión formal.");
+      return false;
+    }
+    return mutate("applications", {
+      id,
+      guarantee_stage: stage,
+      ...(terminal(a.guarantee_stage)
+        ? {
+            decision: "no_presentada",
+            decision_date: null,
+            decision_reference: null,
+          }
+        : {}),
+    });
+  }
+  async function confirmDecision(e: FormEvent<HTMLFormElement>) {
+    e.preventDefault();
+    if (!decisionTarget || !profile) return;
+    const f = new FormData(e.currentTarget);
+    setBusy(true);
+    try {
+      const reason = String(f.get("reason") || "");
+      const date = String(f.get("date"));
+      const reference = String(f.get("reference")).trim();
+      if (
+        !date ||
+        !reference ||
+        (decisionTarget.stage === "rechazada" &&
+          !rejectionReasons.includes(
+            reason as (typeof rejectionReasons)[number],
+          ))
+      )
+        throw Error("Completá el respaldo y el motivo de rechazo.");
+      if (supabase) {
+        const r = await supabase.rpc("set_guarantee_decision", {
+          a_id: decisionTarget.id,
+          new_stage: decisionTarget.stage,
+          reason: reason || null,
+          confirmed_date: date,
+          reference,
+        });
+        if (r.error) throw Error(r.error.message);
+        await load();
+      } else {
+        let next = store;
+        if (decisionTarget.stage === "rechazada")
+          next = demoMutation(
+            next,
+            "sensitive",
+            { application_id: decisionTarget.id, rejection_reason: reason },
+            "upsert",
+            "application_id",
+            profile,
+          );
+        next = demoMutation(
+          next,
+          "applications",
+          {
+            id: decisionTarget.id,
+            guarantee_stage: decisionTarget.stage,
+            decision: decisionTarget.stage,
+            decision_date: date,
+            decision_reference: reference,
+          },
+          "update",
+          "id",
+          profile,
+        );
+        setStore(next);
+      }
+      setDecisionTarget(null);
+      setMessage("");
+    } catch (e) {
+      setMessage(e instanceof Error ? e.message : "No se pudo guardar");
     } finally {
       setBusy(false);
     }
@@ -270,6 +346,7 @@ export default function CRM() {
   const navigate = (p: string) => {
     setPage(p);
     setSelected(null);
+    setPreview(null);
     setFilter("todos");
     setSearch("");
     setCompletion("todos");
@@ -297,6 +374,9 @@ export default function CRM() {
       completion: "carga_manual",
       contact_status: "no_contactado",
       stage: "nuevo",
+      guarantee_stage: "sin_contactar",
+      requested_date: String(f.get("requested_date") || "") || null,
+      drive_folder_url: null,
       preapproval: "no_iniciada",
       documentation: "no_solicitada",
       decision: "no_presentada",
@@ -352,7 +432,8 @@ export default function CRM() {
           {[
             ["Inicio", LayoutDashboard],
             ["Solicitudes", Inbox],
-            ["Pipeline", Columns3],
+            ["Pipeline comercial", Columns3],
+            ["Pipeline de garantía", FileCheck2],
             ...(isAdmin
               ? [
                   ["Equipo", Users],
@@ -453,7 +534,7 @@ export default function CRM() {
             </div>
           )}
           {current ? (
-            <Detail
+            <CaseDetail
               key={current.id}
               app={current}
               store={store}
@@ -461,6 +542,7 @@ export default function CRM() {
               busy={busy}
               mutate={mutate}
               back={() => setSelected(null)}
+              guarantee={changeGuarantee}
             />
           ) : (
             <>
@@ -471,7 +553,7 @@ export default function CRM() {
                     <p>
                       {page === "Solicitudes"
                         ? "Todas tus solicitudes, organizadas en un solo lugar."
-                        : page === "Pipeline"
+                        : page.startsWith("Pipeline")
                           ? "Seguí cada oportunidad a lo largo del proceso comercial."
                           : page === "Control de datos"
                             ? "Administrá los orígenes y los campos de tus solicitudes."
@@ -480,7 +562,7 @@ export default function CRM() {
                               : "Seguimiento de la recepción de formularios."}
                     </p>
                   </div>
-                  {["Solicitudes", "Pipeline"].includes(page) && (
+                  {(page === "Solicitudes" || page.startsWith("Pipeline")) && (
                     <button
                       className="primary"
                       onClick={() => setModal("lead")}
@@ -491,13 +573,22 @@ export default function CRM() {
                   )}
                 </div>
               )}
-              {page === "Pipeline" && (
+              {page.startsWith("Pipeline") && (
                 <Pipeline
                   applications={active}
                   store={store}
                   busy={busy}
-                  move={(id, stage) => mutate("applications", { id, stage })}
-                  open={setSelected}
+                  kind={
+                    page === "Pipeline comercial" ? "commercial" : "guarantee"
+                  }
+                  admin={isAdmin}
+                  now={now}
+                  move={
+                    page === "Pipeline comercial"
+                      ? (id, stage) => mutate("applications", { id, stage })
+                      : changeGuarantee
+                  }
+                  open={setPreview}
                 />
               )}
               {page === "Inicio" && (
@@ -524,7 +615,7 @@ export default function CRM() {
                       {
                         label: "Sin contactar",
                         count: active.filter(
-                          (a) => a.contact_status === "no_contactado",
+                          (a) => a.guarantee_stage === "sin_contactar",
                         ).length,
                         icon: Users,
                         sub: "El próximo paso empieza acá",
@@ -533,7 +624,7 @@ export default function CRM() {
                       {
                         label: "En preaprobación",
                         count: active.filter(
-                          (a) => a.preapproval === "en_proceso",
+                          (a) => a.guarantee_stage === "preaprobacion_cargada",
                         ).length,
                         icon: FileCheck2,
                         sub: "Evaluación interna en curso",
@@ -541,12 +632,9 @@ export default function CRM() {
                       },
                       {
                         label: "Esperando documentación",
-                        count: active.filter((a) =>
-                          [
-                            "solicitada",
-                            "pendiente_cliente",
-                            "recibida_incompleta",
-                          ].includes(a.documentation),
+                        count: active.filter(
+                          (a) =>
+                            a.guarantee_stage === "documentacion_solicitada",
                         ).length,
                         icon: Clock,
                         sub: "Casos para seguir acompañando",
@@ -608,11 +696,8 @@ export default function CRM() {
                       {[
                         ["todos", "Todas"],
                         ["nuevo", "Nuevas"],
-                        ["en_gestion", "En gestión"],
-                        ["en_preaprobacion", "En preaprobación"],
-                        ["finalizado", "Finalizadas"],
-                        ["esperando_respuesta", "Esperando respuesta"],
-                        ["descartado", "Descartadas"],
+                        ["en_contacto", "En contacto"],
+                        ["finalizado", "Finalizados"],
                         ...(isAdmin ? [["sin_asignar", "Sin asignar"]] : []),
                       ].map(([v, l]) => (
                         <button
@@ -737,6 +822,7 @@ export default function CRM() {
                           <th>ALQUILER MENSUAL</th>
                           <th>ORIGEN</th>
                           <th>ESTADO COMERCIAL</th>
+                          <th>PROCESO DE GARANTÍA</th>
                           <th>RESPONSABLE</th>
                           <th />
                         </tr>
@@ -765,6 +851,11 @@ export default function CRM() {
                                     <small>
                                       {a.phone}{" "}
                                       <span>· {date(a.created_at)}</span>
+                                      {needsFollowUp(a, now) && (
+                                        <span className="followup-chip">
+                                          Seguimiento pendiente · 48 h
+                                        </span>
+                                      )}
                                     </small>
                                   </div>
                                 </div>
@@ -780,6 +871,11 @@ export default function CRM() {
                               </td>
                               <td>
                                 <Badge value={a.stage} />
+                              </td>
+                              <td>
+                                <Badge
+                                  value={a.guarantee_stage || "sin_contactar"}
+                                />
                               </td>
                               <td>
                                 {isAdmin ? (
@@ -1009,6 +1105,73 @@ export default function CRM() {
           <span>CRM · Gestión de solicitudes</span>
         </footer>
       </div>
+      {preview && allowed.find((a) => a.id === preview) && (
+        <Dialog
+          title="Vista previa del cliente"
+          drawer
+          close={() => setPreview(null)}
+        >
+          <CaseDetail
+            key={preview}
+            compact
+            app={allowed.find((a) => a.id === preview)!}
+            store={store}
+            profile={profile}
+            busy={busy}
+            mutate={mutate}
+            guarantee={changeGuarantee}
+          />
+        </Dialog>
+      )}
+      {decisionTarget && (
+        <Dialog
+          title={
+            decisionTarget.stage === "rechazada"
+              ? "Confirmar rechazo"
+              : "Confirmar aprobación"
+          }
+          close={() => setDecisionTarget(null)}
+        >
+          <form onSubmit={confirmDecision}>
+            <p className="muted">
+              Registrá la decisión formal confirmada por Porto Seguro. No
+              modifica el estado comercial.
+            </p>
+            {decisionTarget.stage === "rechazada" && (
+              <label>
+                Motivo del rechazo
+                <select name="reason" required defaultValue="">
+                  <option value="" disabled>
+                    Seleccionar motivo
+                  </option>
+                  {rejectionReasons.map((r) => (
+                    <option key={r} value={r}>
+                      {human(r)}
+                    </option>
+                  ))}
+                </select>
+              </label>
+            )}
+            <label>
+              Fecha de decisión
+              <input
+                name="date"
+                type="date"
+                required
+                defaultValue={todayUy()}
+              />
+            </label>
+            <label>
+              Referencia o respaldo
+              <textarea name="reference" required maxLength={2000} />
+            </label>
+            {message && <p role="alert">{message}</p>}
+            <button className="primary" disabled={busy}>
+              Confirmar decisión
+            </button>
+          </form>
+        </Dialog>
+      )}
       {modal && (
         <div className="modal-backdrop">
           <section
@@ -1029,6 +1192,14 @@ export default function CRM() {
                   Comenzá con lo esencial. Podés completar los demás datos
                   después.
                 </p>
+                <label>
+                  Fecha de solicitud
+                  <input
+                    name="requested_date"
+                    type="date"
+                    defaultValue={todayUy()}
+                  />
+                </label>
                 <label>
                   Nombre completo
                   <input name="name" required maxLength={200} />
@@ -1249,568 +1420,5 @@ export function Login({
         )}
       </form>
     </div>
-  );
-}
-function Detail({
-  app: a,
-  store,
-  profile,
-  busy,
-  mutate,
-  back,
-}: {
-  app: Application;
-  store: Store;
-  profile: Profile;
-  busy: boolean;
-  mutate: (
-    k: keyof Store,
-    v: Record<string, unknown>,
-    m?: "insert" | "update" | "upsert",
-    match?: string,
-  ) => Promise<boolean>;
-  back: () => void;
-}) {
-  const [tab, setTab] = useState("Resumen"),
-    [summary, setSummary] = useState(a.summary),
-    [note, setNote] = useState("");
-  const admin = profile.role === "admin",
-    sensitive = store.sensitive.find((s) => s.application_id === a.id),
-    clearing = store.clearing.find((s) => s.application_id === a.id);
-  const canClear = admin || profile.can_clearing;
-  return (
-    <>
-      <button className="text-button back" onClick={back}>
-        <ArrowLeft size={16} />
-        Volver a solicitudes
-      </button>
-      <div className="page-heading">
-        <div>
-          <div className="eyebrow">SOLICITUD · {a.id.slice(0, 8)}</div>
-          <h1>{a.full_name}</h1>
-          <p>
-            {a.phone} · Ingreso {date(a.created_at)} ·{" "}
-            {sourceName(a, store.sources)}
-          </p>
-        </div>
-        <Badge value={a.completion} />
-      </div>
-      <div className="detail-tabs tabs">
-        {["Resumen", "Seguimiento", "Historial", "Origen"].map((t) => (
-          <button
-            className={tab === t ? "selected" : ""}
-            onClick={() => setTab(t)}
-            key={t}
-          >
-            {t}
-          </button>
-        ))}
-      </div>
-      <div className="detail-grid">
-        <div>
-          {tab === "Resumen" && (
-            <>
-              <section className="card padded">
-                <h2>Datos de la solicitud</h2>
-                <form
-                  onSubmit={async (e) => {
-                    e.preventDefault();
-                    const f = new FormData(e.currentTarget);
-                    await mutate("applications", {
-                      id: a.id,
-                      full_name: f.get("name"),
-                      phone: f.get("phone"),
-                      rent_amount: f.get("rent") ? Number(f.get("rent")) : null,
-                      rent_currency: f.get("currency") || null,
-                      guarantee_type: f.get("type"),
-                      source_id: f.get("source_id") || null,
-                    });
-                  }}
-                >
-                  <div className="form-grid">
-                    <label>
-                      Nombre completo
-                      <input
-                        name="name"
-                        defaultValue={a.full_name}
-                        required
-                        maxLength={200}
-                      />
-                    </label>
-                    <label>
-                      Celular
-                      <input
-                        name="phone"
-                        defaultValue={a.phone}
-                        required
-                        minLength={3}
-                        maxLength={40}
-                      />
-                    </label>
-                    <label>
-                      Alquiler mensual
-                      <input
-                        name="rent"
-                        type="number"
-                        min="0"
-                        step="0.01"
-                        defaultValue={a.rent_amount ?? ""}
-                      />
-                    </label>
-                    <label>
-                      Moneda
-                      <select
-                        name="currency"
-                        defaultValue={a.rent_currency || ""}
-                      >
-                        <option value="">Sin informar</option>
-                        <option>UYU</option>
-                        <option>USD</option>
-                      </select>
-                    </label>
-                    <label>
-                      Origen del cliente
-                      <select name="source_id" defaultValue={a.source_id || ""}>
-                        <option value="">Sin identificar</option>
-                        {store.sources
-                          .filter((o) => !o.archived || o.id === a.source_id)
-                          .map((o) => (
-                            <option key={o.id} value={o.id}>
-                              {o.name}
-                              {o.archived ? " (archivado)" : ""}
-                            </option>
-                          ))}
-                      </select>
-                    </label>
-                    <label>
-                      Tipo de garantía
-                      <select name="type" defaultValue={a.guarantee_type}>
-                        {["tradicional", "universitaria", "rural", "otra"].map(
-                          (v) => (
-                            <option key={v} value={v}>
-                              {human(v)}
-                            </option>
-                          ),
-                        )}
-                      </select>
-                    </label>
-                  </div>
-                  <button className="secondary" disabled={busy}>
-                    <Check size={16} />
-                    Guardar datos
-                  </button>
-                </form>
-              </section>
-              {admin && (
-                <section className="card padded">
-                  <h2>Datos restringidos · Parte 2</h2>
-                  <p className="muted">
-                    Visibles únicamente para administración. No implican
-                    evaluación automática.
-                  </p>
-                  <form
-                    onSubmit={(e) => {
-                      e.preventDefault();
-                      const f = new FormData(e.currentTarget);
-                      mutate(
-                        "sensitive",
-                        {
-                          application_id: a.id,
-                          national_id: f.get("ci"),
-                          monthly_income: f.get("income")
-                            ? Number(f.get("income"))
-                            : null,
-                        },
-                        "upsert",
-                        "application_id",
-                      );
-                    }}
-                  >
-                    <div className="form-grid">
-                      <label>
-                        Cédula
-                        <input
-                          name="ci"
-                          maxLength={40}
-                          defaultValue={sensitive?.national_id || ""}
-                        />
-                      </label>
-                      <label>
-                        Ingresos declarados
-                        <input
-                          name="income"
-                          type="number"
-                          min="0"
-                          step="0.01"
-                          defaultValue={sensitive?.monthly_income ?? ""}
-                        />
-                      </label>
-                    </div>
-                    <small>
-                      No se presupone moneda de ingresos si no fue informada.
-                    </small>
-                    <button className="secondary" disabled={busy}>
-                      Guardar datos restringidos
-                    </button>
-                  </form>
-                </section>
-              )}
-              {canClear && (
-                <section className="card padded">
-                  <h2>Clearing · Registro manual</h2>
-                  <p className="muted">
-                    Resultado obtenido por un procedimiento autorizado. No se
-                    realizan consultas automáticas.
-                  </p>
-                  <form
-                    onSubmit={(e) => {
-                      e.preventDefault();
-                      const f = new FormData(e.currentTarget);
-                      mutate(
-                        "clearing",
-                        {
-                          application_id: a.id,
-                          result: f.get("result"),
-                          detail: f.get("detail"),
-                        },
-                        "upsert",
-                        "application_id",
-                      );
-                    }}
-                  >
-                    <label>
-                      Resultado
-                      <select
-                        name="result"
-                        defaultValue={clearing?.result || "no_consultado"}
-                      >
-                        {states.clearing.map((v) => (
-                          <option key={v} value={v}>
-                            {human(v)}
-                          </option>
-                        ))}
-                      </select>
-                    </label>
-                    <label>
-                      Referencia / observación
-                      <textarea
-                        name="detail"
-                        defaultValue={clearing?.detail || ""}
-                      />
-                    </label>
-                    <button className="secondary" disabled={busy}>
-                      Guardar Clearing
-                    </button>
-                  </form>
-                </section>
-              )}
-              {store.fields.filter(
-                (f) => !f.archived && (!f.sensitive || admin),
-              ).length > 0 && (
-                <section className="card padded">
-                  <h2>Información adicional</h2>
-                  {store.fields
-                    .filter((f) => !f.archived && (!f.sensitive || admin))
-                    .map((f) => (
-                      <form
-                        key={f.id}
-                        onSubmit={(e) => {
-                          e.preventDefault();
-                          const v = String(
-                            new FormData(e.currentTarget).get("value"),
-                          );
-                          mutate(
-                            "values",
-                            { application_id: a.id, field_id: f.id, value: v },
-                            "upsert",
-                            "application_id",
-                          );
-                        }}
-                      >
-                        <label>
-                          {f.label}
-                          {["select", "boolean"].includes(f.type) ? (
-                            <select
-                              name="value"
-                              defaultValue={
-                                store.values.find(
-                                  (v) =>
-                                    v.application_id === a.id &&
-                                    v.field_id === f.id,
-                                )?.value || ""
-                              }
-                            >
-                              <option value="">Sin informar</option>
-                              {(f.type === "boolean"
-                                ? ["Sí", "No"]
-                                : f.options
-                              ).map((o) => (
-                                <option key={o}>{o}</option>
-                              ))}
-                            </select>
-                          ) : (
-                            <input
-                              name="value"
-                              type={f.type}
-                              defaultValue={
-                                store.values.find(
-                                  (v) =>
-                                    v.application_id === a.id &&
-                                    v.field_id === f.id,
-                                )?.value || ""
-                              }
-                            />
-                          )}
-                        </label>
-                        <button className="secondary" disabled={busy}>
-                          Guardar
-                        </button>
-                      </form>
-                    ))}
-                </section>
-              )}
-            </>
-          )}
-          {tab === "Seguimiento" && (
-            <>
-              <section className="card padded">
-                <h2>Comentarios generales</h2>
-                <p className="muted">Resumen vigente del caso.</p>
-                <textarea
-                  value={summary}
-                  maxLength={10000}
-                  onChange={(e) => setSummary(e.target.value)}
-                  rows={5}
-                />
-                <button
-                  className="primary"
-                  disabled={busy}
-                  onClick={() => mutate("applications", { id: a.id, summary })}
-                >
-                  Guardar resumen
-                </button>
-              </section>
-              <section className="card padded">
-                <h2>Notas de seguimiento</h2>
-                <p className="muted">
-                  Las notas conservan su autor y fecha y no se eliminan.
-                </p>
-                <form
-                  onSubmit={async (e) => {
-                    e.preventDefault();
-                    if (
-                      await mutate(
-                        "notes",
-                        {
-                          id: crypto.randomUUID(),
-                          application_id: a.id,
-                          author_id: profile.id,
-                          body: note.trim(),
-                          created_at: new Date().toISOString(),
-                        },
-                        "insert",
-                      )
-                    )
-                      setNote("");
-                  }}
-                >
-                  <textarea
-                    aria-label="Nueva nota"
-                    placeholder="Registrá una conversación o el próximo paso…"
-                    value={note}
-                    onChange={(e) => setNote(e.target.value)}
-                    required
-                    maxLength={10000}
-                  />
-                  <button className="primary" disabled={busy || !note.trim()}>
-                    <Plus size={16} />
-                    Agregar nota
-                  </button>
-                </form>
-                {store.notes
-                  .filter((n) => n.application_id === a.id)
-                  .sort((a, b) => b.created_at.localeCompare(a.created_at))
-                  .map((n) => (
-                    <article className="timeline" key={n.id}>
-                      <strong>
-                        {store.profiles.find((p) => p.id === n.author_id)
-                          ?.full_name || "Miembro del equipo"}
-                      </strong>
-                      <small>{date(n.created_at)}</small>
-                      <p>{n.body}</p>
-                    </article>
-                  ))}
-              </section>
-            </>
-          )}
-          {tab === "Historial" && (
-            <section className="card padded">
-              <h2>Historial de actividad</h2>
-              {store.audits
-                .filter((e) => e.application_id === a.id)
-                .sort((a, b) => b.created_at.localeCompare(a.created_at))
-                .map((e) => (
-                  <article className="timeline" key={e.id}>
-                    <strong>{human(e.action)}</strong>
-                    <small>
-                      {date(e.created_at)} ·{" "}
-                      {store.profiles.find((p) => p.id === e.actor_id)
-                        ?.full_name || "Sistema / equipo"}
-                    </small>
-                    {Boolean(e.changes) && (
-                      <pre>{JSON.stringify(e.changes, null, 2)}</pre>
-                    )}
-                  </article>
-                ))}
-              <article className="timeline">
-                <strong>Solicitud ingresada</strong>
-                <small>{date(a.created_at)}</small>
-              </article>
-            </section>
-          )}
-          {tab === "Origen" && (
-            <section className="card padded">
-              <h2>Procedencia y atribución</h2>
-              <p>Origen del cliente: {sourceName(a, store.sources)}</p>
-              <p className="muted">Medio de carga: {human(a.source)}</p>
-              {Object.entries(a.attribution).map(([k, v]) => (
-                <div className="team-row" key={k}>
-                  <strong>{human(k)}</strong>
-                  <span>{String(v) || "Sin informar"}</span>
-                </div>
-              ))}
-              <p className="muted">
-                La evidencia de consentimiento solo se registra si fue
-                transmitida y verificada. La ausencia de evidencia no equivale a
-                rechazo.
-              </p>
-            </section>
-          )}
-          {tab === "Origen" && admin && <EventViewer applicationId={a.id} />}
-        </div>
-        <aside className="detail-side">
-          <section className="card padded">
-            <h2>Gestión del caso</h2>
-            {["contact_status", "stage", "preapproval", "documentation"].map(
-              (k) => (
-                <label key={k}>
-                  {labels[k]}
-                  <select
-                    disabled={busy}
-                    value={a[k as keyof Application] as string}
-                    onChange={(e) =>
-                      mutate("applications", { id: a.id, [k]: e.target.value })
-                    }
-                  >
-                    {states[k as keyof typeof states].map((s) => (
-                      <option value={s} key={s}>
-                        {human(s)}
-                      </option>
-                    ))}
-                  </select>
-                </label>
-              ),
-            )}
-            <div className="info-note">
-              <ShieldCheck size={18} />
-              La preaprobación es interna. La decisión formal corresponde a
-              Porto Seguro.
-            </div>
-          </section>
-          <section className="card padded">
-            <h2>Decisión formal</h2>
-            {admin ? (
-              <form
-                onSubmit={(e) => {
-                  e.preventDefault();
-                  const f = new FormData(e.currentTarget);
-                  const decision = String(f.get("decision"));
-                  if (
-                    ["aprobada", "rechazada"].includes(decision) &&
-                    (!f.get("date") || !String(f.get("reference")).trim())
-                  ) {
-                    e.currentTarget.reportValidity();
-                    return;
-                  }
-                  mutate("applications", {
-                    id: a.id,
-                    decision,
-                    decision_date: f.get("date") || null,
-                    decision_reference: f.get("reference") || null,
-                  });
-                }}
-              >
-                <label>
-                  Estado
-                  <select name="decision" defaultValue={a.decision}>
-                    {states.decision.map((s) => (
-                      <option value={s} key={s}>
-                        {human(s)}
-                      </option>
-                    ))}
-                  </select>
-                </label>
-                <label>
-                  Fecha de respaldo
-                  <input
-                    name="date"
-                    type="date"
-                    defaultValue={a.decision_date || ""}
-                    required
-                  />
-                </label>
-                <label>
-                  Referencia o comentario de respaldo
-                  <textarea
-                    name="reference"
-                    defaultValue={a.decision_reference || ""}
-                    required
-                  />
-                </label>
-                <button className="secondary" disabled={busy}>
-                  Registrar decisión
-                </button>
-              </form>
-            ) : (
-              <Badge value={a.decision} />
-            )}
-          </section>
-          {admin && (
-            <section className="card padded">
-              <h2>Responsable</h2>
-              <select
-                aria-label="Asignar responsable"
-                value={a.assigned_user_id || ""}
-                disabled={busy}
-                onChange={(e) =>
-                  mutate("applications", {
-                    id: a.id,
-                    assigned_user_id: e.target.value || null,
-                  })
-                }
-              >
-                <option value="">Sin asignar</option>
-                {store.profiles
-                  .filter((p) => p.active)
-                  .map((p) => (
-                    <option key={p.id} value={p.id}>
-                      {p.full_name}
-                    </option>
-                  ))}
-              </select>
-              <button
-                className="secondary wide"
-                disabled={busy}
-                onClick={() =>
-                  mutate("applications", { id: a.id, archived: !a.archived })
-                }
-              >
-                {a.archived ? "Restaurar solicitud" : "Archivar solicitud"}
-              </button>
-            </section>
-          )}
-        </aside>
-      </div>
-    </>
   );
 }

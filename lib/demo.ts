@@ -34,17 +34,22 @@ export function seed(): Store {
     source_id: i % 3 === 0 ? REAL_ESTATE_SOURCE_ID : WEB_SOURCE_ID,
     assigned_user_id: i < 3 ? null : i % 2 ? sellerId : otherId,
     created_at: new Date(Date.now() - i * 8 * 3600000).toISOString(),
-    updated_at: new Date().toISOString(),
+    updated_at: new Date(Date.now() - i * 8 * 3600000).toISOString(),
     completion: i % 3 === 0 ? "parte_1_recibida" : "completo",
     contact_status: i < 4 ? "no_contactado" : "contactado",
-    stage:
+    stage: i < 4 ? "nuevo" : i < 9 ? "en_contacto" : "finalizado",
+    guarantee_stage:
       i < 4
-        ? "nuevo"
+        ? "sin_contactar"
         : i < 7
-          ? "en_gestion"
+          ? "documentacion_solicitada"
           : i < 9
-            ? "en_preaprobacion"
-            : "finalizado",
+            ? "documentacion_recibida"
+            : "preaprobacion_cargada",
+    requested_date: new Date(Date.now() - i * 8 * 3600000)
+      .toISOString()
+      .slice(0, 10),
+    drive_folder_url: null,
     preapproval: i > 6 ? "preaprobado" : i > 3 ? "en_proceso" : "no_iniciada",
     documentation: i > 6 ? "pendiente_cliente" : "no_solicitada",
     decision: "no_presentada",

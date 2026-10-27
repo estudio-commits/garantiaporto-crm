@@ -1,3 +1,4 @@
+import { migrateApplication } from "./workflow";
 import type { Application, ClientSource, Store } from "./domain";
 export const WEB_SOURCE_ID = "40000000-0000-4000-8000-000000000001";
 export const REAL_ESTATE_SOURCE_ID = "40000000-0000-4000-8000-000000000002";
@@ -13,8 +14,23 @@ export function upgradeStore(s: Store): Store {
   return {
     ...s,
     sources: s.sources ?? defaultSources(),
+    audits: [
+      ...s.applications
+        .filter((a) => !a.guarantee_stage)
+        .map((a) => ({
+          id: `workflow-migration-${a.id}`,
+          application_id: a.id,
+          actor_id: null,
+          actor_name: "Migración de esquema",
+          action: "workflow_migration",
+          created_at: new Date().toISOString(),
+          visibility: "admin" as const,
+          changes: { previous: a },
+        })),
+      ...s.audits,
+    ],
     applications: s.applications.map((a) => ({
-      ...a,
+      ...migrateApplication(a),
       source_id:
         a.source_id === undefined
           ? a.source === "web"

@@ -1523,3 +1523,125 @@ body {
 .pipeline-card-top {
   user-select: none;
 }
+.followup-chip {
+  display: block !important;
+  width: fit-content;
+  background: #fff2d9;
+  color: #99671a !important;
+  padding: 5px 7px;
+  border-radius: 5px;
+  font-size: 10px !important;
+  margin-top: 7px;
+}
+.followup-banner {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  background: #fff3dd;
+  border: 1px solid #f3ddb3;
+  border-radius: 8px;
+  padding: 14px;
+  font-size: 12px;
+  color: #8e641f;
+  margin-bottom: 20px;
+}
+.case-dates {
+  display: flex;
+  gap: 25px;
+  flex-wrap: wrap;
+  color: var(--muted);
+  font-size: 11px;
+  margin-bottom: 20px;
+}
+.case-dates strong {
+  display: block;
+  color: var(--navy);
+  font-weight: 500;
+  margin-top: 5px;
+}
+.drive-link {
+  display: flex;
+  gap: 8px;
+  width: fit-content;
+  margin: 14px 0;
+}
+.extra-data {
+  border-top: 1px solid var(--line);
+  margin-top: 22px;
+  padding-top: 18px;
+}
+.extra-data summary,
+details > summary {
+  cursor: pointer;
+  font-weight: 500;
+}
+.drawer-backdrop {
+  justify-content: flex-end;
+  padding: 0;
+}
+.preview-drawer {
+  background: var(--bg);
+  width: min(760px, 100%);
+  height: 100dvh;
+  overflow: auto;
+  padding: 28px;
+  box-shadow: -10px 0 70px #14253e33;
+  outline: none;
+}
+.preview-drawer .page-heading {
+  margin-top: 25px;
+}
+.preview-drawer h1 {
+  font-size: 25px;
+}
+.dialog-title {
+  position: sticky;
+  top: -28px;
+  background: inherit;
+  z-index: 2;
+  padding: 12px 0;
+}
+.audit-changes {
+  display: grid;
+  gap: 9px;
+  font-size: 12px;
+}
+.audit-changes > div {
+  display: grid;
+  grid-template-columns: 150px minmax(0, 1fr);
+  gap: 12px;
+}
+.audit-changes dt {
+  color: var(--muted);
+}
+.audit-changes dd {
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+.column-heading.aprobada > span {
+  background: #51a68c;
+}
+.column-heading.rechazada > span {
+  background: #c57575;
+}
+.pipeline-tools {
+  gap: 12px;
+}
+.pipeline-tools label {
+  min-width: 140px;
+}
+@media (max-width: 600px) {
+  .preview-drawer {
+    padding: 18px;
+  }
+  .audit-changes > div {
+    grid-template-columns: 1fr;
+    gap: 4px;
+  }
+  .case-dates {
+    gap: 15px;
+  }
+  .dialog-title {
+    top: -18px;
+  }
+}

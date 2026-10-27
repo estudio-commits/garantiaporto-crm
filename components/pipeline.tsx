@@ -2,14 +2,21 @@
 import { useState } from "react";
 import { Search, GripVertical, ArrowUpRight } from "lucide-react";
 import { Application, Store, states, human } from "@/lib/domain";
+import { needsFollowUp, dateTime, terminal } from "@/lib/workflow";
 import { sourceName } from "@/lib/sources";
 export default function Pipeline({
+  kind,
+  admin,
+  now,
   applications,
   store,
   busy,
   move,
   open,
 }: {
+  kind: "commercial" | "guarantee";
+  admin: boolean;
+  now: number;
   applications: Application[];
   store: Store;
   busy: boolean;
@@ -21,6 +28,9 @@ export default function Pipeline({
     [type, setType] = useState("all"),
     [over, setOver] = useState<string | null>(null),
     [status, setStatus] = useState("");
+  const [order, setOrder] = useState("updated_at");
+  const field = kind === "commercial" ? "stage" : "guarantee_stage";
+  const stages = kind === "commercial" ? states.stage : states.guarantee_stage;
   const filtered = applications.filter(
     (a) =>
       `${a.full_name} ${a.phone}`
@@ -31,12 +41,18 @@ export default function Pipeline({
   );
   async function change(id: string, stage: string) {
     const a = applications.find((a) => a.id === id);
-    if (!a || busy || a.stage === stage) return;
+    if (!a || busy || a[field] === stage) return;
+    if (
+      kind === "guarantee" &&
+      !admin &&
+      (terminal(stage) || terminal(a.guarantee_stage))
+    )
+      return;
     const ok = await move(id, stage);
     setStatus(
       ok
         ? `${a.full_name}: ${human(stage)}`
-        : "No se pudo mover la solicitud. Conserva su etapa anterior.",
+        : "Movimiento pendiente de confirmación o no guardado. Conserva su etapa anterior.",
     );
     setOver(null);
   }
@@ -75,19 +91,43 @@ export default function Pipeline({
             ))}
           </select>
         </label>
+        <label>
+          Ordenar por
+          <select value={order} onChange={(e) => setOrder(e.target.value)}>
+            <option value="updated_at">Última modificación</option>
+            <option value="created_at">Fecha de ingreso</option>
+          </select>
+        </label>
         <span className="muted">{filtered.length} solicitudes</span>
       </div>
       <p className="pipeline-hint">
-        Arrastrá una tarjeta para cambiar su etapa, o usá el selector de la
-        tarjeta. La decisión formal y la preaprobación interna se registran por
-        separado.
+        Abrí una tarjeta para ver la ficha sin salir del pipeline. Arrastrá o
+        usá el selector para cambiar de etapa. Los dos procesos son
+        independientes.
       </p>
       <div className="sr-only" role="status">
         {status}
       </div>
-      <div className="pipeline-board" aria-label="Pipeline comercial">
-        {states.stage.map((stage) => {
-          const rows = filtered.filter((a) => a.stage === stage);
+      <div
+        className="pipeline-board"
+        aria-label={
+          kind === "commercial" ? "Pipeline comercial" : "Pipeline de garantía"
+        }
+      >
+        {stages.map((stage) => {
+          const rows = filtered
+            .filter((a) => a[field] === stage)
+            .sort(
+              (a, b) =>
+                (order === "created_at"
+                  ? b.created_at
+                  : b.updated_at
+                ).localeCompare(
+                  order === "created_at" ? a.created_at : a.updated_at,
+                ) ||
+                b.created_at.localeCompare(a.created_at) ||
+                a.id.localeCompare(b.id),
+            );
           return (
             <section
               key={stage}
@@ -116,7 +156,20 @@ export default function Pipeline({
                   <article
                     className="pipeline-card"
                     key={a.id}
-                    draggable={!busy}
+                    draggable={
+                      !busy &&
+                      (kind === "commercial" ||
+                        admin ||
+                        !terminal(a.guarantee_stage))
+                    }
+                    onClick={(e) => {
+                      if (
+                        !(e.target as HTMLElement).closest(
+                          "button,select,label",
+                        )
+                      )
+                        open(a.id);
+                    }}
                     onDragStart={(e) => {
                       e.dataTransfer.setData("text/plain", a.id);
                       e.dataTransfer.effectAllowed = "move";
@@ -138,6 +191,12 @@ export default function Pipeline({
                       <ArrowUpRight size={15} />
                     </button>
                     <small>{a.phone}</small>
+                    <small>Actualizado: {dateTime(a.updated_at)}</small>
+                    {needsFollowUp(a, now) && (
+                      <span className="followup-chip">
+                        Hacer seguimiento · 48 h sin cambios
+                      </span>
+                    )}
                     <div className="pipeline-source">
                       {sourceName(a, store.sources)}
                     </div>
@@ -154,12 +213,23 @@ export default function Pipeline({
                       Mover a
                       <select
                         aria-label={`Etapa de ${a.full_name}`}
-                        disabled={busy}
-                        value={a.stage}
+                        disabled={
+                          busy ||
+                          (kind === "guarantee" &&
+                            !admin &&
+                            terminal(a.guarantee_stage))
+                        }
+                        value={a[field] || "sin_contactar"}
                         onChange={(e) => change(a.id, e.target.value)}
                       >
-                        {states.stage.map((s) => (
-                          <option key={s} value={s}>
+                        {stages.map((s) => (
+                          <option
+                            key={s}
+                            value={s}
+                            disabled={
+                              kind === "guarantee" && !admin && terminal(s)
+                            }
+                          >
                             {human(s)}
                           </option>
                         ))}

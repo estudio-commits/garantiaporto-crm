@@ -8,8 +8,8 @@ set local request.jwt.claim.sub='00000000-0000-4000-8000-000000000002';
 do $$begin
  if (select count(*) from applications)<>1 then raise exception 'RLS leak';end if;
  if exists(select 1 from application_sensitive) then raise exception 'Sensitive leak';end if;
- update applications set stage='en_gestion' where id='10000000-0000-4000-8000-000000000001';
- update applications set stage='en_preaprobacion',source_id='40000000-0000-4000-8000-000000000002' where id='10000000-0000-4000-8000-000000000001';
+ update applications set stage='en_contacto' where id='10000000-0000-4000-8000-000000000001';
+ update applications set guarantee_stage='preaprobacion_cargada',source_id='40000000-0000-4000-8000-000000000002' where id='10000000-0000-4000-8000-000000000001';
  if (select decision from applications where id='10000000-0000-4000-8000-000000000001')<>'no_presentada' then raise exception 'Pipeline altered formal decision';end if;
  if (select count(*) from client_sources)<>2 then raise exception 'Seller cannot read origins';end if;
  begin insert into client_sources(name) values('Forbidden seller origin');raise exception 'Seller can create origin';exception when insufficient_privilege then null;end;
@@ -21,6 +21,10 @@ do $$begin
  begin insert into audit_log(application_id,action) values('10000000-0000-4000-8000-000000000001','forged');raise exception 'Audit forge allowed';exception when insufficient_privilege then null;end;
  insert into notes(application_id,body) values('10000000-0000-4000-8000-000000000001','Nota ficticia');
  begin perform ingest_event('{}');raise exception 'Seller may ingest';exception when insufficient_privilege then null;end;
+ begin perform set_guarantee_decision('10000000-0000-4000-8000-000000000001','aprobada',null,current_date,'Ficticio');raise exception 'Seller approved guarantee';exception when insufficient_privilege then null;end;
+ begin update applications set drive_folder_url='javascript:alert(1)' where id='10000000-0000-4000-8000-000000000001';raise exception 'Unsafe Drive URL accepted';exception when check_violation then null;end;
+ if not exists(select 1 from applications where id='10000000-0000-4000-8000-000000000001' and stage='en_contacto' and guarantee_stage='preaprobacion_cargada') then raise exception 'Axes not independent';end if;
+
 end $$;
 reset role;
 do $$declare e jsonb; r jsonb; aid uuid;begin
@@ -47,6 +51,32 @@ do $$begin
  begin update applications set source_id='40000000-0000-4000-8000-000000000002' where id='10000000-0000-4000-8000-000000000002';raise exception 'Archived origin accepted';exception when raise_exception then if sqlerrm='Archived origin accepted' then raise;end if;end;
  if not exists(select 1 from audit_log where changes->'source_id'->>'after'='40000000-0000-4000-8000-000000000002') then raise exception 'Source change unaudited';end if;
 end $$;
+
+set local request.jwt.claim.sub='00000000-0000-4000-8000-000000000001';
+set local role authenticated;
+do $$declare prev timestamptz;cnt bigint;begin
+ begin perform set_guarantee_decision('10000000-0000-4000-8000-000000000001','rechazada',null,current_date,'Referencia ficticia');raise exception 'Missing reason accepted';exception when raise_exception then if sqlerrm='Missing reason accepted' then raise;end if;end;
+ perform set_guarantee_decision('10000000-0000-4000-8000-000000000001','rechazada','clearing',current_date,'Referencia ficticia');
+ if not exists(select 1 from applications where id='10000000-0000-4000-8000-000000000001' and guarantee_stage='rechazada' and stage='finalizado') then raise exception 'Guarantee decision modified commercial axis';end if;
+ if not exists(select 1 from application_sensitive where application_id='10000000-0000-4000-8000-000000000001' and rejection_reason='clearing') then raise exception 'Reason missing';end if;
+ select updated_at into prev from applications where id='10000000-0000-4000-8000-000000000001';select count(*) into cnt from audit_log;
+ update applications set full_name=full_name,updated_at=now()+interval '10 days' where id='10000000-0000-4000-8000-000000000001';
+ if (select updated_at from applications where id='10000000-0000-4000-8000-000000000001')<>prev then raise exception 'No-op reset recency';end if;
+ if (select count(*) from audit_log)<>cnt then raise exception 'No-op generated history';end if;
+ update applications set full_name='Nombre Corregido Ficticio',drive_folder_url='https://drive.google.com/drive/folders/folder-ficticio',requested_date='2026-10-25' where id='10000000-0000-4000-8000-000000000001';
+ if not exists(select 1 from audit_log where changes->'full_name'->>'before'='Caso A' and changes->'full_name'->>'after'='Nombre Corregido Ficticio') then raise exception 'Full data audit absent';end if;
+ select updated_at into prev from applications where id='10000000-0000-4000-8000-000000000001';
+ insert into notes(application_id,body) values('10000000-0000-4000-8000-000000000001','Seguimiento ficticio de prueba');
+ if (select updated_at from applications where id='10000000-0000-4000-8000-000000000001')<=prev then raise exception 'Followup did not touch activity';end if;
+end $$;
+reset role;
+set local request.jwt.claim.sub='00000000-0000-4000-8000-000000000002';
+set local role authenticated;
+do $$begin
+ if exists(select 1 from audit_log where visibility='admin') then raise exception 'Private audit leaked';end if;
+ begin update applications set guarantee_stage='sin_contactar' where id='10000000-0000-4000-8000-000000000001';raise exception 'Seller reopened formal decision';exception when raise_exception then if sqlerrm='Seller reopened formal decision' then raise;end if;end;
+end $$;
+reset role;
 update profiles set active=false where id='00000000-0000-4000-8000-000000000002';
 set local role authenticated;
 set local request.jwt.claim.sub='00000000-0000-4000-8000-000000000002';

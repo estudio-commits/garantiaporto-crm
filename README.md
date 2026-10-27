@@ -39,3 +39,9 @@ La lista carga los registros autorizados por RLS antes de paginar: requiere pagi
 Inicio simplificado con resumen y tasas de aprobación formal por origen/tipo de garantía. Solicitudes mantiene la lista con origen, etapa y responsable; Pipeline ofrece arrastrar tarjetas o moverlas con un selector accesible. Ambos comparten estado. Control de datos permite crear, renombrar y archivar orígenes y administrar campos personalizados. Orígenes iniciales: garantiaporto.com.uy y Negocio inmobiliario. La carga manual se registra por separado del origen comercial. Garantías tradicional, universitaria y rural visibles en lista, pipeline y ficha.
 
 La migración 005 habilita estas funciones en Supabase. La demo se actualiza sin borrar datos guardados. Consultar la nota sobre archivos de fuente TRIAL en docs/OPERATIONS.md antes de producción.
+
+## Procesos comerciales y de garantía
+
+Ahora hay dos pipelines independientes: comercial (nuevo cliente, en contacto, finalizado) y garantía (sin contactar, documentación solicitada/recibida, preaprobación cargada, aprobada/rechazada). Las tarjetas abren una ficha lateral sin salir del tablero. Se ordenan por última modificación o ingreso; a las 48 h sin actividad aparece una advertencia visual. Guardar sin cambiar datos no reinicia ese plazo.
+
+La ficha reúne datos del cliente, fecha de ingreso, fecha de solicitud, enlace de carpeta Drive y ambos estados. Documentos exclusivamente en Drive: el CRM solo guarda el enlace. Historial cronológico con valores anteriores/nuevos, responsables y seguimientos; datos sensibles mantienen sus permisos. Rechazo formal exige un motivo y respaldo; solo administración registra decisiones finales. Para Supabase se requiere migración 006; la demo migra los datos anteriores automáticamente.
