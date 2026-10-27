@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import "./globals.css";
 export const metadata: Metadata = {
+  icons: { icon: "/brand/icon.svg" },
   title: "Garantía Porto · CRM",
   description: "Panel privado de gestión de solicitudes",
   robots: { index: false, follow: false },

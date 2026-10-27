@@ -2,6 +2,7 @@
 import { useEffect, useState, useMemo, FormEvent } from "react";
 import {
   LayoutDashboard,
+  Columns3,
   Users,
   Search,
   Plus,
@@ -27,6 +28,10 @@ import {
 import { supabase } from "@/lib/supabase";
 import UserCreator from "./user-creator";
 import EventViewer from "./event-viewer";
+import Pipeline from "./pipeline";
+import SourceManager from "./source-manager";
+import ApprovalMetrics from "./approval-metrics";
+import { sourceName, upgradeStore } from "@/lib/sources";
 import { seed, adminId } from "@/lib/demo";
 import {
   states,
@@ -40,6 +45,7 @@ import {
   type Note,
 } from "@/lib/domain";
 const empty: Store = {
+  sources: [],
   applications: [],
   profiles: [],
   notes: [],
@@ -50,6 +56,7 @@ const empty: Store = {
   values: [],
 };
 const tables: Record<keyof Store, string> = {
+  sources: "client_sources",
   applications: "applications",
   profiles: "profiles",
   notes: "notes",
@@ -93,6 +100,8 @@ export default function CRM() {
     [filter, setFilter] = useState("todos"),
     [showFilters, setShowFilters] = useState(false),
     [completion, setCompletion] = useState("todos"),
+    [originFilter, setOriginFilter] = useState("todos"),
+    [typeFilter, setTypeFilter] = useState("todos"),
     [owner, setOwner] = useState("todos"),
     [archived, setArchived] = useState(false),
     [sort, setSort] = useState("recent"),
@@ -138,7 +147,7 @@ export default function CRM() {
     if (demo) {
       try {
         const saved = localStorage.getItem("porto-demo-v1");
-        setStore(saved ? JSON.parse(saved) : seed());
+        setStore(saved ? upgradeStore(JSON.parse(saved)) : seed());
       } catch {
         setStore(seed());
       }
@@ -161,7 +170,7 @@ export default function CRM() {
   }, [store, demo, ready]);
   useEffect(() => {
     setPageNumber(1);
-  }, [search, filter, completion, owner, archived]);
+  }, [search, filter, completion, owner, archived, originFilter, typeFilter]);
   async function mutate(
     k: keyof Store,
     value: Record<string, unknown>,
@@ -178,8 +187,12 @@ export default function CRM() {
             ? await q.insert(value)
             : mode === "upsert"
               ? await q.upsert(value)
-              : await q.update(value).eq(match, value[match]);
+              : await q.update(value).eq(match, value[match]).select();
         if (r.error) throw Error(r.error.message);
+        if (mode === "update" && (!r.data || r.data.length === 0))
+          throw Error(
+            "No se pudo guardar: el registro ya no está disponible o no tenés permiso.",
+          );
         await load();
       } else {
         setStore((s) => {
@@ -241,6 +254,11 @@ export default function CRM() {
           : a.stage === filter),
     )
     .filter((a) => completion === "todos" || a.completion === completion)
+    .filter(
+      (a) =>
+        originFilter === "todos" || (a.source_id || "unknown") === originFilter,
+    )
+    .filter((a) => typeFilter === "todos" || a.guarantee_type === typeFilter)
     .filter((a) => owner === "todos" || a.assigned_user_id === owner)
     .sort((a, b) =>
       sort === "name"
@@ -254,6 +272,11 @@ export default function CRM() {
     setSelected(null);
     setFilter("todos");
     setSearch("");
+    setCompletion("todos");
+    setOriginFilter("todos");
+    setTypeFilter("todos");
+    setOwner("todos");
+    setArchived(false);
   };
   async function addLead(e: FormEvent<HTMLFormElement>) {
     e.preventDefault();
@@ -268,6 +291,7 @@ export default function CRM() {
       guarantee_type: String(f.get("type")),
       assigned_user_id: isAdmin ? null : profile!.id,
       source: "manual",
+      source_id: String(f.get("source_id")) || null,
       created_at: now,
       updated_at: now,
       completion: "carga_manual",
@@ -296,17 +320,26 @@ export default function CRM() {
   return (
     <div className="shell">
       <aside className="sidebar">
-        <a className="brand" onClick={() => navigate("Inicio")}>
-          <span className="brand-icon">
-            <ShieldCheck size={25} />
-          </span>
-          <span>
-            garantía
-            <span className="brand-porto">
-              porto<span className="brand-dot">.</span>
-            </span>
-          </span>
-        </a>
+        <button
+          className="brand official-brand"
+          aria-label="Porto Seguro Corredores · Inicio"
+          onClick={() => navigate("Inicio")}
+        >
+          <img
+            className="brand-full"
+            src="/brand/logo.svg"
+            alt="Porto Seguro Corredores"
+            width="180"
+            height="40"
+          />
+          <img
+            className="brand-compact"
+            src="/brand/icon.svg"
+            alt="Porto Seguro"
+            width="36"
+            height="36"
+          />
+        </button>
         <div className="workspace">
           <span className="workspace-icon">GP</span>
           <div>
@@ -319,10 +352,11 @@ export default function CRM() {
           {[
             ["Inicio", LayoutDashboard],
             ["Solicitudes", Inbox],
+            ["Pipeline", Columns3],
             ...(isAdmin
               ? [
                   ["Equipo", Users],
-                  ["Campos", Settings2],
+                  ["Control de datos", Settings2],
                   ["Integraciones", Link2],
                 ]
               : []),
@@ -430,40 +464,53 @@ export default function CRM() {
             />
           ) : (
             <>
-              <div className="page-heading">
-                <div>
-                  <div className="eyebrow">GARANTÍA PORTO / CRM</div>
-                  <h1>
-                    {page === "Inicio"
-                      ? "Cada solicitud, un nuevo comienzo."
-                      : page}
-                  </h1>
-                  <p>
-                    {page === "Inicio"
-                      ? "Todo lo que necesitás para acompañar a tus clientes, en un solo lugar."
-                      : page === "Solicitudes"
-                        ? "Organizá, asigná y acompañá cada oportunidad."
-                        : page === "Equipo"
-                          ? "Administrá accesos y responsabilidades de tu equipo."
-                          : page === "Campos"
-                            ? "Adaptá las fichas a tu forma de trabajar."
-                            : "Seguimiento de la recepción de formularios."}
-                  </p>
+              {page !== "Inicio" && (
+                <div className="page-heading">
+                  <div>
+                    <h1>{page}</h1>
+                    <p>
+                      {page === "Solicitudes"
+                        ? "Todas tus solicitudes, organizadas en un solo lugar."
+                        : page === "Pipeline"
+                          ? "Seguí cada oportunidad a lo largo del proceso comercial."
+                          : page === "Control de datos"
+                            ? "Administrá los orígenes y los campos de tus solicitudes."
+                            : page === "Equipo"
+                              ? "Administrá accesos y responsabilidades."
+                              : "Seguimiento de la recepción de formularios."}
+                    </p>
+                  </div>
+                  {["Solicitudes", "Pipeline"].includes(page) && (
+                    <button
+                      className="primary"
+                      onClick={() => setModal("lead")}
+                    >
+                      <Plus size={18} />
+                      Nueva solicitud
+                    </button>
+                  )}
                 </div>
-                {["Inicio", "Solicitudes"].includes(page) && (
-                  <button className="primary" onClick={() => setModal("lead")}>
-                    <Plus size={18} />
-                    Nueva solicitud
-                  </button>
-                )}
-              </div>
+              )}
+              {page === "Pipeline" && (
+                <Pipeline
+                  applications={active}
+                  store={store}
+                  busy={busy}
+                  move={(id, stage) => mutate("applications", { id, stage })}
+                  open={setSelected}
+                />
+              )}
               {page === "Inicio" && (
                 <>
                   <div className="overview-line">
                     <h2>Resumen de actividad</h2>
-                    <span>
-                      <Clock size={14} /> Todos los registros activos
-                    </span>
+                    <button
+                      className="primary"
+                      onClick={() => setModal("lead")}
+                    >
+                      <Plus size={18} />
+                      Nueva solicitud
+                    </button>
                   </div>
                   <div className="stats">
                     {[
@@ -545,28 +592,16 @@ export default function CRM() {
                   </div>
                 </>
               )}
-              {["Inicio", "Solicitudes"].includes(page) && (
+              {page === "Solicitudes" && (
                 <section className="card table-card">
                   <div className="section-heading">
                     <div>
                       <h2>
-                        {page === "Inicio"
-                          ? "Últimas solicitudes"
-                          : "Todas las solicitudes"}{" "}
+                        Todas las solicitudes{" "}
                         <span className="count">{list.length}</span>
                       </h2>
-                      <p>
-                        Personas que están un paso más cerca de su nuevo hogar.
-                      </p>
+                      <p>Nuevas, en proceso y finalizadas.</p>
                     </div>
-                    {page === "Inicio" && (
-                      <button
-                        className="text-button"
-                        onClick={() => navigate("Solicitudes")}
-                      >
-                        Ver todas <ArrowUpRight size={16} />
-                      </button>
-                    )}
                   </div>
                   <div className="table-tools">
                     <div className="tabs">
@@ -574,6 +609,10 @@ export default function CRM() {
                         ["todos", "Todas"],
                         ["nuevo", "Nuevas"],
                         ["en_gestion", "En gestión"],
+                        ["en_preaprobacion", "En preaprobación"],
+                        ["finalizado", "Finalizadas"],
+                        ["esperando_respuesta", "Esperando respuesta"],
+                        ["descartado", "Descartadas"],
                         ...(isAdmin ? [["sin_asignar", "Sin asignar"]] : []),
                       ].map(([v, l]) => (
                         <button
@@ -606,6 +645,40 @@ export default function CRM() {
                   </div>
                   {showFilters && (
                     <div className="filters">
+                      <label>
+                        Origen
+                        <select
+                          value={originFilter}
+                          onChange={(e) => setOriginFilter(e.target.value)}
+                        >
+                          <option value="todos">Todos los orígenes</option>
+                          {store.sources.map((o) => (
+                            <option key={o.id} value={o.id}>
+                              {o.name}
+                            </option>
+                          ))}
+                          <option value="unknown">Sin identificar</option>
+                        </select>
+                      </label>
+                      <label>
+                        Tipo de garantía
+                        <select
+                          value={typeFilter}
+                          onChange={(e) => setTypeFilter(e.target.value)}
+                        >
+                          <option value="todos">Todos los tipos</option>
+                          {[
+                            "tradicional",
+                            "universitaria",
+                            "rural",
+                            "otra",
+                          ].map((t) => (
+                            <option key={t} value={t}>
+                              {human(t)}
+                            </option>
+                          ))}
+                        </select>
+                      </label>
                       <label>
                         Formulario
                         <select
@@ -662,9 +735,9 @@ export default function CRM() {
                         <tr>
                           <th>CLIENTE / INGRESO</th>
                           <th>ALQUILER MENSUAL</th>
-                          <th>FORMULARIO</th>
+                          <th>ORIGEN</th>
                           <th>ESTADO COMERCIAL</th>
-                          <th>{isAdmin ? "RESPONSABLE" : "CONTACTO"}</th>
+                          <th>RESPONSABLE</th>
                           <th />
                         </tr>
                       </thead>
@@ -701,7 +774,9 @@ export default function CRM() {
                                 <small>{human(a.guarantee_type)}</small>
                               </td>
                               <td>
-                                <Badge value={a.completion} />
+                                <span className="source-label">
+                                  {sourceName(a, store.sources)}
+                                </span>
                               </td>
                               <td>
                                 <Badge value={a.stage} />
@@ -724,7 +799,9 @@ export default function CRM() {
                                     </span>
                                   )
                                 ) : (
-                                  <Badge value={a.contact_status} />
+                                  <span className="owner">
+                                    {profile.full_name}
+                                  </span>
                                 )}
                               </td>
                               <td>
@@ -768,10 +845,16 @@ export default function CRM() {
                 </section>
               )}
               {page === "Inicio" && (
+                <ApprovalMetrics
+                  applications={active}
+                  sources={store.sources}
+                />
+              )}
+              {page === "Inicio" && (
                 <div className="bottom-note">
                   <ShieldCheck size={15} />
                   La preaprobación interna no implica aprobación formal de Porto
-                  Seguro.<span>Gestión clara. Atención cercana.</span>
+                  Seguro.
                 </div>
               )}
               {page === "Equipo" && isAdmin && (
@@ -822,7 +905,14 @@ export default function CRM() {
                   ))}
                 </section>
               )}
-              {page === "Campos" && isAdmin && (
+              {page === "Control de datos" && isAdmin && (
+                <SourceManager
+                  sources={store.sources}
+                  busy={busy}
+                  save={(v, m) => mutate("sources", v, m)}
+                />
+              )}
+              {page === "Control de datos" && isAdmin && (
                 <section className="card padded">
                   <div className="section-heading">
                     <h2>Campos personalizados</h2>
@@ -961,6 +1051,21 @@ export default function CRM() {
                   </label>
                 </div>
                 <label>
+                  Origen del cliente
+                  <select name="source_id" required defaultValue="">
+                    <option value="" disabled>
+                      Seleccionar origen
+                    </option>
+                    {store.sources
+                      .filter((o) => !o.archived)
+                      .map((o) => (
+                        <option key={o.id} value={o.id}>
+                          {o.name}
+                        </option>
+                      ))}
+                  </select>
+                </label>
+                <label>
                   Tipo de garantía
                   <select name="type">
                     <option value="tradicional">Tradicional</option>
@@ -1050,7 +1155,12 @@ export function Login({
   return (
     <div className="login">
       <div className="login-art">
-        <ShieldCheck size={56} />
+        <img
+          src="/brand/logo-white.svg"
+          alt="Porto Seguro Corredores"
+          width="260"
+          height="60"
+        />
         <h1>
           Cada solicitud.
           <br />
@@ -1179,7 +1289,8 @@ function Detail({
           <div className="eyebrow">SOLICITUD · {a.id.slice(0, 8)}</div>
           <h1>{a.full_name}</h1>
           <p>
-            {a.phone} · Ingreso {date(a.created_at)} · {human(a.source)}
+            {a.phone} · Ingreso {date(a.created_at)} ·{" "}
+            {sourceName(a, store.sources)}
           </p>
         </div>
         <Badge value={a.completion} />
@@ -1212,6 +1323,7 @@ function Detail({
                       rent_amount: f.get("rent") ? Number(f.get("rent")) : null,
                       rent_currency: f.get("currency") || null,
                       guarantee_type: f.get("type"),
+                      source_id: f.get("source_id") || null,
                     });
                   }}
                 >
@@ -1254,6 +1366,20 @@ function Detail({
                         <option value="">Sin informar</option>
                         <option>UYU</option>
                         <option>USD</option>
+                      </select>
+                    </label>
+                    <label>
+                      Origen del cliente
+                      <select name="source_id" defaultValue={a.source_id || ""}>
+                        <option value="">Sin identificar</option>
+                        {store.sources
+                          .filter((o) => !o.archived || o.id === a.source_id)
+                          .map((o) => (
+                            <option key={o.id} value={o.id}>
+                              {o.name}
+                              {o.archived ? " (archivado)" : ""}
+                            </option>
+                          ))}
                       </select>
                     </label>
                     <label>
@@ -1545,7 +1671,8 @@ function Detail({
           {tab === "Origen" && (
             <section className="card padded">
               <h2>Procedencia y atribución</h2>
-              <p>Origen: {human(a.source)}</p>
+              <p>Origen del cliente: {sourceName(a, store.sources)}</p>
+              <p className="muted">Medio de carga: {human(a.source)}</p>
               {Object.entries(a.attribution).map(([k, v]) => (
                 <div className="team-row" key={k}>
                   <strong>{human(k)}</strong>

@@ -5,6 +5,7 @@ export const states = {
   stage: [
     "nuevo",
     "en_gestion",
+    "en_preaprobacion",
     "esperando_respuesta",
     "finalizado",
     "descartado",
@@ -30,6 +31,7 @@ export const labels: Record<string, string> = {
   clearing: "Clearing",
 };
 export const human = (s: string) =>
+  ({ en_preaprobacion: "En preaprobación", finalizado: "Finalizado" })[s] ||
   s.replaceAll("_", " ").replace(/^./, (c) => c.toUpperCase());
 export type Profile = {
   id: string;
@@ -47,7 +49,8 @@ export type Application = {
   rent_amount: number | null;
   rent_currency: string | null;
   guarantee_type: string;
-  source: string;
+  source: string; // capture channel; separate from commercial origin
+  source_id?: string | null;
   assigned_user_id: string | null;
   created_at: string;
   updated_at: string;
@@ -101,7 +104,9 @@ export type FieldValue = {
   field_id: string;
   value: string;
 };
+export type ClientSource = { id: string; name: string; archived: boolean };
 export type Store = {
+  sources: ClientSource[];
   applications: Application[];
   profiles: Profile[];
   notes: Note[];

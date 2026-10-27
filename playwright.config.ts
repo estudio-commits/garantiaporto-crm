@@ -5,7 +5,7 @@ export default defineConfig({
   testDir: "tests/browser",
   workers: 1,
   use: {
-    baseURL: "http://127.0.0.1:3000",
+    baseURL: "http://127.0.0.1:3100",
     headless: true,
     launchOptions: {
       executablePath: await chromium.executablePath(),
@@ -13,9 +13,9 @@ export default defineConfig({
     },
   },
   webServer: {
-    command: "npm run dev",
-    url: "http://127.0.0.1:3000",
-    reuseExistingServer: true,
+    command: "npm run dev -- --port 3100",
+    url: "http://127.0.0.1:3100",
+    reuseExistingServer: false,
     timeout: 90000,
   },
 });

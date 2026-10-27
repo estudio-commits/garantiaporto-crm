@@ -1,3 +1,8 @@
+import {
+  defaultSources,
+  WEB_SOURCE_ID,
+  REAL_ESTATE_SOURCE_ID,
+} from "./sources";
 import type { Store, Application } from "./domain";
 export const adminId = "00000000-0000-4000-8000-000000000001",
   sellerId = "00000000-0000-4000-8000-000000000002",
@@ -23,14 +28,23 @@ export function seed(): Store {
     phone: `000 000 ${String(i + 1).padStart(3, "0")}`,
     rent_amount: [28000, 35000, 22000, 42000, 31000, 18000][i % 6],
     rent_currency: "UYU",
-    guarantee_type: i % 4 === 0 ? "universitaria" : "tradicional",
+    guarantee_type:
+      i % 4 === 0 ? "universitaria" : i % 5 === 0 ? "rural" : "tradicional",
     source: i % 3 === 0 ? "manual" : "web",
+    source_id: i % 3 === 0 ? REAL_ESTATE_SOURCE_ID : WEB_SOURCE_ID,
     assigned_user_id: i < 3 ? null : i % 2 ? sellerId : otherId,
     created_at: new Date(Date.now() - i * 8 * 3600000).toISOString(),
     updated_at: new Date().toISOString(),
     completion: i % 3 === 0 ? "parte_1_recibida" : "completo",
     contact_status: i < 4 ? "no_contactado" : "contactado",
-    stage: i < 4 ? "nuevo" : i < 9 ? "en_gestion" : "esperando_respuesta",
+    stage:
+      i < 4
+        ? "nuevo"
+        : i < 7
+          ? "en_gestion"
+          : i < 9
+            ? "en_preaprobacion"
+            : "finalizado",
     preapproval: i > 6 ? "preaprobado" : i > 3 ? "en_proceso" : "no_iniciada",
     documentation: i > 6 ? "pendiente_cliente" : "no_solicitada",
     decision: "no_presentada",
@@ -40,6 +54,7 @@ export function seed(): Store {
   }));
   return {
     applications,
+    sources: defaultSources(),
     profiles: [
       {
         id: adminId,

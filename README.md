@@ -33,3 +33,9 @@ La lista carga los registros autorizados por RLS antes de paginar: requiere pagi
 - `tests/`: negocio, SQL y navegador.
 - `docs/INTEGRATION.md`: contrato y preparación de integración.
 - `docs/OPERATIONS.md`: seguridad, operación y próximos pasos.
+
+## Panel actualizado
+
+Inicio simplificado con resumen y tasas de aprobación formal por origen/tipo de garantía. Solicitudes mantiene la lista con origen, etapa y responsable; Pipeline ofrece arrastrar tarjetas o moverlas con un selector accesible. Ambos comparten estado. Control de datos permite crear, renombrar y archivar orígenes y administrar campos personalizados. Orígenes iniciales: garantiaporto.com.uy y Negocio inmobiliario. La carga manual se registra por separado del origen comercial. Garantías tradicional, universitaria y rural visibles en lista, pipeline y ficha.
+
+La migración 005 habilita estas funciones en Supabase. La demo se actualiza sin borrar datos guardados. Consultar la nota sobre archivos de fuente TRIAL en docs/OPERATIONS.md antes de producción.
