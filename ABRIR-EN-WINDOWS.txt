@@ -1,0 +1,17 @@
+CÓMO ABRIR EL CRM EN WINDOWS
+
+1. Instalá Node.js versión LTS desde https://nodejs.org y cerrá el instalador.
+2. Descomprimí el ZIP descargado de GitHub.
+3. Entrá en la carpeta que contiene el archivo package.json.
+4. Hacé clic en la barra de dirección del Explorador de archivos (arriba).
+5. Escribí cmd y presioná Enter. Se abre una ventana de comandos en esa carpeta.
+6. Escribí npm ci y presioná Enter. Esperá a que termine.
+7. Escribí npm run dev y presioná Enter.
+8. Copiá la dirección que aparece junto a Local y abrila en tu navegador.
+
+Dejá abierta la ventana de comandos mientras usás el panel.
+Para detenerlo, presioná Ctrl+C.
+Las próximas veces repetí los pasos 3 a 5 y ejecutá solamente npm run dev.
+
+Es una demostración con datos ficticios. No ingreses información real de clientes.
+No necesitás Supabase para ver esta demo.
