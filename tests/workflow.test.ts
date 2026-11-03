@@ -4,6 +4,7 @@ import { seed } from "../lib/demo";
 import {
   demoMutation,
   followUp,
+  pendingIssuance,
   validCI,
   normalizeCI,
   formatCI,
@@ -150,4 +151,65 @@ test("demo records old/new changes, ignores no-ops and touches parent on follow-
     p,
   );
   assert.ok(followed.applications[0].updated_at > a.updated_at);
+});
+
+test("issuance is admin-only, requires approval and evidence, and remains auditable", () => {
+  const s = seed(),
+    a = s.applications[0];
+  a.guarantee_stage = "aprobada";
+  a.decision = "aprobada";
+  assert.equal(pendingIssuance(a), true);
+  const value = {
+    id: a.id,
+    issued_date: "2026-11-03",
+    issued_reference: "FICTICIO-001",
+  };
+  assert.throws(
+    () => demoMutation(s, "applications", value, "update", "id", s.profiles[1]),
+    /administración/,
+  );
+  for (const invalid of [
+    { ...value, issued_reference: " " },
+    { ...value, issued_date: "2026-02-30" },
+    { ...value, issued_date: null },
+  ])
+    assert.throws(() =>
+      demoMutation(s, "applications", invalid, "update", "id", s.profiles[0]),
+    );
+  const next = demoMutation(
+    s,
+    "applications",
+    value,
+    "update",
+    "id",
+    s.profiles[0],
+  );
+  assert.equal(pendingIssuance(next.applications[0]), false);
+  assert.equal(next.applications[0].stage, a.stage);
+  assert.equal(next.applications[0].guarantee_stage, "aprobada");
+  assert.throws(
+    () =>
+      demoMutation(
+        next,
+        "applications",
+        { id: a.id, guarantee_stage: "sin_contactar" },
+        "update",
+        "id",
+        s.profiles[0],
+      ),
+    /anulá/,
+  );
+  const canceled = demoMutation(
+    next,
+    "applications",
+    { id: a.id, issued_date: null, issued_reference: null },
+    "update",
+    "id",
+    s.profiles[0],
+  );
+  assert.equal(pendingIssuance(canceled.applications[0]), true);
+  assert.deepEqual(
+    (canceled.audits[0].changes as Record<string, unknown>).issued_reference,
+    { before: "FICTICIO-001", after: null },
+  );
 });

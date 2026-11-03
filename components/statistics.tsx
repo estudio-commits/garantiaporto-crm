@@ -92,6 +92,11 @@ export default function Statistics({
       </div>
       <section className="card padded">
         <h2>Origen de las mejores oportunidades</h2>
+        <p>
+          {summary.issued} garantías emitidas · {summary.pendingIssuance}{" "}
+          aprobadas pendientes de emisión, dentro de las solicitudes del
+          período.
+        </p>
         <p className="muted">
           Aprobación = aprobadas / decisiones. Conversión = aprobadas /
           solicitudes. Los casos abiertos todavía pueden cambiar el resultado.

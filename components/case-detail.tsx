@@ -18,6 +18,7 @@ import {
   validDriveFolder,
   terminal,
 } from "@/lib/workflow";
+import Issuance from "./issuance";
 import Marketing from "./marketing";
 import CommentForm from "./comment-form";
 import FollowUp from "./follow-up";
@@ -65,6 +66,8 @@ export default function CaseDetail({
         stage: "Estado comercial",
         guarantee_stage: "Proceso de la garantía",
         requested_date: "Fecha de solicitud",
+        issued_date: "Fecha de emisión",
+        issued_reference: "Referencia de emisión",
         drive_folder_url: "Carpeta de Drive",
         summary: "Comentarios",
         national_id: "Cédula",
@@ -517,6 +520,7 @@ export default function CaseDetail({
               </button>
             )}
           </section>
+          <Issuance app={a} admin={admin} busy={busy} mutate={mutate} />
         </>
       ) : tab === "Marketing" ? (
         <Marketing app={a} admin={admin} />

@@ -2,7 +2,7 @@
 import { useState } from "react";
 import { Search, GripVertical, Plus } from "lucide-react";
 import { Application, Store, states, human } from "@/lib/domain";
-import { formatCI, dateTime, terminal } from "@/lib/workflow";
+import { formatCI, dateTime, terminal, pendingIssuance } from "@/lib/workflow";
 import { sourceName } from "@/lib/sources";
 import FollowUp from "./follow-up";
 export default function Pipeline({
@@ -45,7 +45,10 @@ export default function Pipeline({
         .includes(search.toLowerCase()) &&
       (source === "all" || (a.source_id || "unknown") === source) &&
       (type === "all" || a.guarantee_type === type) &&
-      (stageFilter === "all" || a[field] === stageFilter),
+      (stageFilter === "all" ||
+        (stageFilter === "emisiones_pendientes"
+          ? pendingIssuance(a)
+          : a[field] === stageFilter)),
   );
   async function change(id: string, stage: string) {
     const a = applications.find((a) => a.id === id);
@@ -114,6 +117,9 @@ export default function Pipeline({
             onChange={(e) => setStageFilter(e.target.value)}
           >
             <option value="all">Todas las etapas</option>
+            {kind === "guarantee" && (
+              <option value="emisiones_pendientes">Emisiones pendientes</option>
+            )}
             {stages.map((s) => (
               <option key={s} value={s}>
                 {human(s)}
@@ -213,6 +219,11 @@ export default function Pipeline({
                     </button>
                     <small>Cédula: {formatCI(a.national_id)}</small>
                     <small>Ingreso: {dateTime(a.created_at)}</small>
+                    {a.issued_date && (
+                      <span className="badge aprobada">
+                        Emitida · {a.issued_date}
+                      </span>
+                    )}
                     <FollowUp app={a} notes={store.notes} now={now} />
                     <div className="pipeline-source">
                       Origen: {sourceName(a, store.sources)}

@@ -82,6 +82,8 @@ export type Application = {
   preapproval: string;
   documentation: string;
   decision: string;
+  issued_date?: string | null;
+  issued_reference?: string | null;
   decision_date?: string | null;
   decision_reference?: string | null;
   summary: string;

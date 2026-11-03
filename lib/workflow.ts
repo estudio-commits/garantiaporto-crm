@@ -7,6 +7,38 @@ export const rejectionReasons = [
 ] as const;
 export const terminal = (s: string | undefined) =>
   s === "aprobada" || s === "rechazada";
+export const pendingIssuance = (a: Application) =>
+  a.guarantee_stage === "aprobada" && !a.issued_date;
+export function validateIssuance(
+  next: Application,
+  old: Application | undefined,
+  profile: Pick<Profile, "role">,
+) {
+  const date = next.issued_date || null,
+    reference = next.issued_reference ?? null;
+  if (
+    profile.role !== "admin" &&
+    (date !== (old?.issued_date || null) ||
+      reference !== (old?.issued_reference ?? null))
+  )
+    throw Error("Solo administración puede registrar o corregir una emisión.");
+  if (
+    (date !== null) !== (reference !== null) ||
+    (reference !== null && (!reference.trim() || reference.length > 2000))
+  )
+    throw Error("Completá la fecha y referencia de emisión.");
+  if (
+    date &&
+    (!/^\d{4}-\d{2}-\d{2}$/.test(date) ||
+      !Number.isFinite(Date.parse(date)) ||
+      new Date(date).toISOString().slice(0, 10) !== date)
+  )
+    throw Error("Fecha de emisión inválida.");
+  if (date && next.guarantee_stage !== "aprobada")
+    throw Error(
+      "Primero anulá el registro de emisión para cambiar la aprobación.",
+    );
+}
 export const todayUy = () =>
   new Intl.DateTimeFormat("en-CA", {
     timeZone: "America/Montevideo",
@@ -139,6 +171,7 @@ export function demoMutation(
         ? String(v.application_id)
         : null;
   if (k === "applications") {
+    validateIssuance(next as Application, old as Application | undefined, p);
     if (!validDriveFolder(String(next.drive_folder_url || "")))
       throw Error("Ingresá un enlace HTTPS a una carpeta de Google Drive.");
     if (next.national_id) {

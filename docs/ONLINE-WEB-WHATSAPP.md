@@ -9,7 +9,7 @@ La opción recomendada es **Vercel para el CRM + Supabase para usuarios y base d
 | Componente | Para qué sirve | Configuración necesaria |
 | --- | --- | --- |
 | Hosting de Next.js | Publica el panel y el receptor de eventos | Conectar repositorio y rama elegida; Node 24 usado en pruebas; `npm ci`, `npm run build`, `npm run start` en servidor propio |
-| Supabase PostgreSQL y Auth | Guarda información compartida y autentica al equipo | Proyectos separados de pruebas/producción; ejecutar migraciones 001 a 007 en orden; backups y restauración probados |
+| Supabase PostgreSQL y Auth | Guarda información compartida y autentica al equipo | Proyectos separados de pruebas/producción; ejecutar migraciones 001 a 008 en orden; backups y restauración probados |
 | Dominio y HTTPS | Acceso desde cualquier equipo | DNS del subdominio y certificado; URL final exacta en Auth y recuperación de contraseña |
 | Correo transaccional | Recuperación de acceso | SMTP propio; dominio verificado; probar recuperación de una cuenta ficticia |
 | Administración | Gestiona accesos | Crear el primer usuario en Supabase Auth y su perfil admin con procedimiento restringido; desactivar registro público; después altas desde Equipo |
@@ -51,7 +51,7 @@ flowchart LR
   D --> E[Pipeline y ficha]
 ```
 
-1. Revisar el código real que procesa el formulario, no solamente el cotizador: plugin/hook de envío exitoso, nombres de campos, consentimientos, confirmación del paso 2 y conversiones de Ads. Confirmar si está en WordPress/Elementor u otra herramienta.
+1. Revisar el código real que procesa el formulario, no solamente el cotizador: plugin/hook de envío exitoso, nombres de campos, consentimientos, confirmación del paso 2 y conversiones de Ads. El usuario confirmó WordPress y formularios de Elementor Pro; falta inspeccionar cómo están construidos los dos pasos. Ver ELEMENTOR-WHATSAPP.md.
 2. Crear un `solicitud_id` UUID al iniciar una solicitud y mantenerlo en **los dos pasos**. Un `event_id` UUID distinto por envío. Un reintento conserva el mismo event_id y cuerpo; solo renueva la firma temporal. No conciliar automáticamente por celular o cédula: un cliente puede tener varias solicitudes.
 3. En el éxito del paso 1, guardar el envío y encolar el evento: crea el lead aunque no complete el segundo paso. En el éxito del paso 2, encolar otro evento con el mismo solicitud_id: completa el caso existente sin reiniciar su gestión. La integración tolera paso 2 antes que paso 1 y no degrada un caso completo si llega un paso 1 tardío.
 4. Capturar y conservar parámetros UTM, identificadores de clic, URL, referente y botón desde la llegada y a través del popup/pasos. Mapear los nombres reales al contrato de `docs/INTEGRATION.md`; los campos adicionales van en `extra`. Revisar qué parámetros contienen datos personales y no copiar tokens de sesión o contraseñas a URLs/marketing.
@@ -105,6 +105,6 @@ Arquitectura propuesta:
 
 Etapas sugeridas: (1) saludo aprobado + derivación humana; (2) preguntas frecuentes y checklist de documentos en sandbox; (3) agente con herramientas limitadas, revisión y piloto pequeño; (4) ampliación con métricas y botón de apagado. No se implementó ni se activó automatización en esta entrega: tu pedido sobre WhatsApp es de diseño y viabilidad.
 
-Datos que faltan: herramienta del formulario y acceso técnico mediante un canal seguro; disponibilidad de dominio/hosting/Supabase; situación del número y API de WhatsApp; consentimiento actual; lista de documentos por garantía y preguntas/respuestas autorizadas; quién toma las derivaciones y horarios. No compartir claves privadas por el chat.
+Datos confirmados: Elementor Pro y WhatsApp Business con portfolio comercial, sin API habilitada. Ver [guía específica](ELEMENTOR-WHATSAPP.md). Datos que faltan: exportación/configuración del formulario y acceso técnico mediante un canal seguro; disponibilidad de dominio/hosting/Supabase; decisión sobre conservar el número/app mediante coexistencia o utilizar otro número; consentimiento actual; lista de documentos por garantía y preguntas/respuestas autorizadas; quién toma las derivaciones y horarios. No compartir claves privadas por el chat.
 
 Referencias oficiales para configurar y verificar requisitos vigentes: [Supabase en producción](https://supabase.com/docs/guides/platform/going-into-prod), [Supabase RLS](https://supabase.com/docs/guides/database/postgres/row-level-security), [Next.js en Vercel](https://vercel.com/docs/frameworks/full-stack/nextjs), [WhatsApp Cloud API](https://developers.facebook.com/docs/whatsapp/cloud-api/), [Política de mensajería de WhatsApp](https://business.whatsapp.com/policy). Estos enlaces son referencias; no se verificaron tarifas ni habilitación de tu cuenta en esta entrega.

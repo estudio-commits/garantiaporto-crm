@@ -47,7 +47,9 @@ test("home contains only three shortcuts, unified navigation and filtered destin
   );
   await nav(page, "Inicio").click();
   await page.getByRole("button", { name: "Ir a emisiones" }).click();
-  await expect(page.getByLabel("Filtrar etapa")).toHaveValue("aprobada");
+  await expect(page.getByLabel("Filtrar etapa")).toHaveValue(
+    "emisiones_pendientes",
+  );
 });
 test("manual identity, Drive, dates and typed comments persist with seller isolation", async ({
   page,
@@ -320,4 +322,84 @@ test("mobile preview, source management and disabled integration", async ({
   expect(
     (await request.post("/api/integration/events", { data: {} })).status(),
   ).toBe(503);
+});
+
+test("issuance leaves approval unchanged, updates pending count and retains history", async ({
+  page,
+}) => {
+  await page.goto("/");
+  await pipeline(page, true);
+  await client(page, "Bruno Demostración").click();
+  await expect(
+    page.getByRole("button", { name: "Marcar como emitida" }),
+  ).toHaveCount(0);
+  await page
+    .getByLabel("Proceso de la garantía", { exact: true })
+    .selectOption("aprobada");
+  const confirm = page.getByRole("dialog", { name: "Confirmar aprobación" });
+  await confirm.getByLabel("Referencia o respaldo").fill("Aprobación ficticia");
+  await confirm.getByRole("button", { name: "Confirmar decisión" }).click();
+  await page.getByRole("button", { name: "Cerrar vista previa" }).click();
+  await nav(page, "Inicio").click();
+  const summary = page
+    .locator(".home-shortcut")
+    .filter({
+      has: page.getByRole("heading", { name: "Emisiones pendientes" }),
+    });
+  await expect(summary.locator(".shortcut-count")).toHaveText("1");
+  await page.getByRole("button", { name: "Ir a emisiones" }).click();
+  await expect(page.getByRole("article", { name: /^Solicitud / })).toHaveCount(
+    1,
+  );
+  await client(page, "Bruno Demostración").click();
+  await page.getByRole("button", { name: "Marcar como emitida" }).click();
+  await page.getByRole("button", { name: "Guardar emisión" }).click();
+  await expect(page.getByLabel("Referencia de emisión")).toBeVisible();
+  await page.getByLabel("Fecha de emisión").fill("2026-11-03");
+  await page.getByLabel("Referencia de emisión").fill("POLIZA-FICTICIA-001");
+  await page.getByRole("button", { name: "Guardar emisión" }).click();
+  await expect(page.getByText(/Emitida el/)).toContainText(
+    "POLIZA-FICTICIA-001",
+  );
+  await expect(
+    page.getByLabel("Proceso de la garantía", { exact: true }),
+  ).toHaveValue("aprobada");
+  await page.getByRole("button", { name: "Historial y seguimientos" }).click();
+  await expect(
+    page.locator(".audit-changes").filter({ hasText: "Fecha de emisión" }),
+  ).toContainText("POLIZA-FICTICIA-001");
+  await page.getByRole("button", { name: "Cerrar vista previa" }).click();
+  await expect(page.getByRole("article", { name: /^Solicitud / })).toHaveCount(
+    0,
+  );
+  await page.reload();
+  await nav(page, "Inicio").click();
+  await expect(summary.locator(".shortcut-count")).toHaveText("0");
+  await page
+    .getByLabel("Simular rol")
+    .selectOption({ label: "Ana · Vendedora Demo" });
+  await pipeline(page, true);
+  await client(page, "Bruno Demostración").click();
+  await expect(page.getByText(/Emitida el/)).toBeVisible();
+  await expect(
+    page.getByRole("button", { name: "Corregir emisión" }),
+  ).toHaveCount(0);
+  await page.getByRole("button", { name: "Cerrar vista previa" }).click();
+  await page
+    .getByLabel("Simular rol")
+    .selectOption({ label: "Administración Demo" });
+  await pipeline(page, true);
+  await client(page, "Bruno Demostración").click();
+  await page
+    .getByRole("button", { name: "Anular registro de emisión", exact: true })
+    .click();
+  await page
+    .getByRole("button", { name: "Confirmar anulación del registro" })
+    .click();
+  await expect(
+    page.getByRole("button", { name: "Marcar como emitida" }),
+  ).toBeVisible();
+  await page.getByRole("button", { name: "Cerrar vista previa" }).click();
+  await nav(page, "Inicio").click();
+  await expect(summary.locator(".shortcut-count")).toHaveText("1");
 });

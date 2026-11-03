@@ -108,6 +108,31 @@ do $$declare e jsonb; r jsonb; aid uuid; begin
  if not exists(select 1 from form_events where event_id=(e->>'event_id')::uuid and discrepancy) then raise exception 'Identity discrepancy not recorded';end if;
 end $$;
 reset role;
+set local request.jwt.claim.sub='00000000-0000-4000-8000-000000000001';
+set local role authenticated;
+do $$begin
+ begin update applications set issued_date=current_date,issued_reference='FICTICIO' where id='10000000-0000-4000-8000-000000000001';raise exception 'Unapproved issuance allowed';exception when raise_exception then if sqlerrm='Unapproved issuance allowed' then raise;end if;end;
+ perform set_guarantee_decision('10000000-0000-4000-8000-000000000001','aprobada',null,current_date,'Aprobación ficticia');
+ begin update applications set issued_date=current_date where id='10000000-0000-4000-8000-000000000001';raise exception 'Incomplete issuance allowed';exception when check_violation then null;end;
+ begin update applications set issued_date=current_date,issued_reference='  ' where id='10000000-0000-4000-8000-000000000001';raise exception 'Empty reference allowed';exception when check_violation then null;end;
+ update applications set issued_date=current_date,issued_reference='POLIZA-FICTICIA' where id='10000000-0000-4000-8000-000000000001';
+ if not exists(select 1 from audit_log where changes->'issued_reference'->>'after'='POLIZA-FICTICIA' and actor_id=auth.uid()) then raise exception 'Issuance audit missing';end if;
+ begin update applications set guarantee_stage='sin_contactar' where id='10000000-0000-4000-8000-000000000001';raise exception 'Issued case reopened silently';exception when raise_exception then if sqlerrm='Issued case reopened silently' then raise;end if;end;
+end $$;
+reset role;
+set local request.jwt.claim.sub='00000000-0000-4000-8000-000000000002';
+set local role authenticated;
+do $$begin
+ if not exists(select 1 from applications where id='10000000-0000-4000-8000-000000000001' and issued_reference='POLIZA-FICTICIA') then raise exception 'Assigned seller cannot see issuance';end if;
+ begin update applications set issued_date=null,issued_reference=null where id='10000000-0000-4000-8000-000000000001';raise exception 'Seller cleared issuance';exception when insufficient_privilege then null;end;
+ begin update applications set issued_reference='FORGED' where id='10000000-0000-4000-8000-000000000001';raise exception 'Seller changed issuance';exception when insufficient_privilege then null;end;
+end $$;
+reset role;
+set local request.jwt.claim.sub='00000000-0000-4000-8000-000000000001';
+set local role authenticated;
+update applications set issued_date=null,issued_reference=null where id='10000000-0000-4000-8000-000000000001';
+do $$begin if not exists(select 1 from audit_log where changes->'issued_reference'->>'before'='POLIZA-FICTICIA' and changes->'issued_reference'->'after'='null'::jsonb) then raise exception 'Cancellation audit missing';end if;end $$;
+reset role;
 update profiles set active=false where id='00000000-0000-4000-8000-000000000002';
 set local role authenticated;
 set local request.jwt.claim.sub='00000000-0000-4000-8000-000000000002';

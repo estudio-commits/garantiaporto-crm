@@ -31,6 +31,7 @@ import CaseDetail from "./case-detail";
 import Dialog from "./dialog";
 import {
   demoMutation,
+  pendingIssuance,
   validCI,
   normalizeCI,
   formatCI,
@@ -245,6 +246,12 @@ export default function CRM() {
   async function changeGuarantee(id: string, stage: string) {
     const a = store.applications.find((a) => a.id === id);
     if (!a || !profile) return false;
+    if (a.issued_date && stage !== "aprobada") {
+      setMessage(
+        "Primero anulá el registro de emisión desde la ficha para cambiar la aprobación.",
+      );
+      return false;
+    }
     if (terminal(stage)) {
       if (profile.role !== "admin") {
         setMessage("Solo administración puede confirmar decisiones formales.");
@@ -733,18 +740,15 @@ export default function CRM() {
                       </span>
                       <h2>Emisiones pendientes</h2>
                       <strong className="shortcut-count">
-                        {
-                          active.filter((a) => a.guarantee_stage === "aprobada")
-                            .length
-                        }
+                        {active.filter(pendingIssuance).length}
                       </strong>
-                      <p>Clientes con garantía aprobada</p>
+                      <p>Garantías aprobadas aún sin emitir</p>
                       <button
                         className="secondary"
                         onClick={() => {
                           navigate("Pipeline");
                           setPipelineKind("guarantee");
-                          setPipelineStage("aprobada");
+                          setPipelineStage("emisiones_pendientes");
                         }}
                       >
                         Ir a emisiones

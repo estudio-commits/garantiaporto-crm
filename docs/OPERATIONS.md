@@ -53,6 +53,15 @@ Notas anteriores pasan a tipo comentario; nuevas notas admiten comentario/comuni
 
 Marketing: primeros valores informados; originales completos y extras accesibles a admin. Payload data usa esquema estricto para no descartar claves desconocidas: enviar campos nuevos en extra. La proyección de extra al caso usa una lista de campos de marketing permitidos. No incluye adjuntos, ingresos ni extras arbitrarios. El emisor aún está pendiente.
 
-El indicador de nuevas cuenta casos comerciales nuevos, con garantía sin contactar y sin comentarios. Emisiones pendientes significa todas las aprobadas: falta acordar registro de emisión. Las estadísticas cuentan solicitudes, no personas únicas, e incluyen archivadas para no ocultar resultados. Las lecturas usan páginas de 500 bajo RLS; con grandes volúmenes se requerirán agregados/búsquedas en servidor.
+El indicador de nuevas cuenta casos comerciales nuevos, con garantía sin contactar y sin comentarios. Desde 008, Emisiones pendientes significa aprobadas sin issued_date. Las estadísticas cuentan solicitudes, no personas únicas, e incluyen archivadas para no ocultar resultados. Las lecturas usan páginas de 500 bajo RLS; con grandes volúmenes se requerirán agregados/búsquedas en servidor.
 
 Ver [puesta online, riesgos y conexiones](ONLINE-WEB-WHATSAPP.md). El receptor externo sigue deshabilitado por defecto, la web actual no se modifica y el agente de WhatsApp está propuesto, no activado.
+
+
+## Registro de emisión (008)
+
+Aplicar `008_issuance.sql` después de 007. Los registros previos conservan campos de emisión nulos y sus fechas de actividad: no se presume que una aprobación esté emitida. issued_date y issued_reference se guardan juntos y solo en casos aprobados; no existe séptima etapa. Administración registra/corrige/anula, vendedores consultan únicamente en sus casos. Trigger y constraint protegen escrituras directas; la auditoría existente registra autor, fecha de registro y valores anteriores/nuevos. La fecha de emisión informada puede diferir del momento de carga.
+
+Anular registro devuelve el caso a emisiones pendientes, no anula una póliza externa. Reabrir o rechazar un caso emitido requiere primero anular explícitamente el registro; no se borra silenciosamente la emisión. El acceso del inicio filtra solo pendientes y el filtro Aprobada muestra ambas situaciones. Estadísticas informa emitidas y pendientes dentro de la cohorte por ingreso.
+
+WordPress/Elementor Pro y WhatsApp Business con portfolio comercial confirmados; API pendiente. Ver ELEMENTOR-WHATSAPP.md para preparación sin modificar el sitio ni el número actual.

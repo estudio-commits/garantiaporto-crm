@@ -1,5 +1,5 @@
 import type { Application, Note, Audit } from "./domain";
-import { followUp, terminal } from "./workflow";
+import { followUp, terminal, pendingIssuance } from "./workflow";
 export function summarize(apps: Application[], notes: Note[], now: number) {
   const approved = apps.filter((a) => a.guarantee_stage === "aprobada").length;
   const rejected = apps.filter((a) => a.guarantee_stage === "rechazada").length;
@@ -22,6 +22,8 @@ export function summarize(apps: Application[], notes: Note[], now: number) {
   return {
     total: apps.length,
     approved,
+    issued: apps.filter((a) => Boolean(a.issued_date)).length,
+    pendingIssuance: apps.filter(pendingIssuance).length,
     rejected,
     pending: apps.filter((a) => !terminal(a.guarantee_stage)).length,
     approvalRate: approved + rejected ? approved / (approved + rejected) : null,
