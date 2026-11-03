@@ -35,6 +35,9 @@ export const labels: Record<string, string> = {
 export const human = (s: string) =>
   (
     ({
+      comentario: "Comentario",
+      comunicacion: "Comunicación",
+      actualizacion: "Actualización",
       nuevo: "Nuevo cliente",
       en_contacto: "En contacto",
       finalizado: "Finalizado",
@@ -61,6 +64,7 @@ export type Application = {
   external_id?: string;
   full_name: string;
   phone: string;
+  national_id?: string | null;
   rent_amount: number | null;
   rent_currency: string | null;
   guarantee_type: string;
@@ -89,6 +93,7 @@ export type Note = {
   application_id: string;
   author_id: string;
   body: string;
+  kind?: "comentario" | "comunicacion" | "actualizacion";
   created_at: string;
 };
 export type Audit = {
@@ -145,25 +150,32 @@ export const eventSchema = z
     solicitud_id: z.string().uuid(),
     step: z.union([z.literal(1), z.literal(2)]),
     sent_at: z.iso.datetime(),
-    data: z.object({
-      full_name: z.string().trim().min(1).max(200),
-      phone: z.string().trim().min(3).max(40),
-      rent_amount: money.nullable().optional(),
-      rent_currency: z.enum(["UYU", "USD"]).nullable().optional(),
-      national_id: z.string().max(40).optional(),
-      monthly_income: money.nullable().optional(),
-      button_origin: z.string().max(300).optional(),
-      source_url: z.string().max(2000).optional(),
-      utm_source: z.string().max(300).optional(),
-      utm_medium: z.string().max(300).optional(),
-      utm_campaign: z.string().max(300).optional(),
-      utm_content: z.string().max(300).optional(),
-      utm_term: z.string().max(300).optional(),
-      gclid: z.string().max(500).optional(),
-      gbraid: z.string().max(500).optional(),
-      wbraid: z.string().max(500).optional(),
-      consent_evidence: z.string().max(1000).optional(),
-    }),
+    data: z
+      .object({
+        full_name: z.string().trim().min(1).max(200),
+        phone: z.string().trim().min(3).max(40),
+        rent_amount: money.nullable().optional(),
+        rent_currency: z.enum(["UYU", "USD"]).nullable().optional(),
+        national_id: z.string().max(40).optional(),
+        monthly_income: money.nullable().optional(),
+        button_origin: z.string().max(300).optional(),
+        source_url: z.string().max(2000).optional(),
+        utm_source: z.string().max(300).optional(),
+        utm_medium: z.string().max(300).optional(),
+        utm_campaign: z.string().max(300).optional(),
+        utm_content: z.string().max(300).optional(),
+        utm_term: z.string().max(300).optional(),
+        gclid: z.string().max(500).optional(),
+        gbraid: z.string().max(500).optional(),
+        wbraid: z.string().max(500).optional(),
+        fbclid: z.string().max(500).optional(),
+        referrer: z.string().max(2000).optional(),
+        landing_page: z.string().max(2000).optional(),
+        form_id: z.string().max(300).optional(),
+        button_id: z.string().max(300).optional(),
+        consent_evidence: z.string().max(1000).optional(),
+      })
+      .strict(),
     extra: z
       .record(
         z.string().max(100),

@@ -3,19 +3,75 @@ import assert from "node:assert/strict";
 import { seed } from "../lib/demo";
 import {
   demoMutation,
-  needsFollowUp,
+  followUp,
+  validCI,
+  normalizeCI,
+  formatCI,
   validDriveFolder,
   migrateApplication,
 } from "../lib/workflow";
-test("follow-up boundary is exactly 48 hours, regardless of browser local timezone", () => {
-  const a = seed().applications[0];
-  a.updated_at = "2026-10-25T12:00:00Z";
-  assert.equal(needsFollowUp(a, Date.parse("2026-10-27T11:59:59Z")), false);
-  assert.equal(needsFollowUp(a, Date.parse("2026-10-27T12:00:00Z")), true);
+test("follow-up uses Uruguay calendar dates and last comment, never edits", () => {
+  const a = {
+    ...seed().applications[0],
+    created_at: "2026-11-02T02:59:00Z",
+    updated_at: "2026-11-03T15:00:00Z",
+  };
+  assert.equal(followUp(a, [], Date.parse("2026-11-02T02:59:59Z")), null);
+  assert.equal(followUp(a, [], Date.parse("2026-11-02T03:00:00Z")), "próximo");
+  assert.equal(followUp(a, [], Date.parse("2026-11-03T03:00:00Z")), "urgente");
+  const notes = [
+    {
+      id: "n",
+      application_id: a.id,
+      author_id: "u",
+      body: "Ficticio",
+      created_at: "2026-11-03T03:01:00Z",
+    },
+  ];
+  assert.equal(followUp(a, notes, Date.parse("2026-11-03T15:00:00Z")), null);
   assert.equal(
-    needsFollowUp({ ...a, archived: true }, Date.parse("2026-10-28T12:00:00Z")),
-    false,
+    followUp({ ...a, archived: true }, [], Date.parse("2026-11-05T12:00:00Z")),
+    null,
   );
+  for (const stage of ["aprobada", "rechazada"])
+    assert.equal(
+      followUp(
+        { ...a, guarantee_stage: stage },
+        [],
+        Date.parse("2026-11-05T12:00:00Z"),
+      ),
+      null,
+    );
+  assert.equal(
+    followUp(
+      { ...a, stage: "finalizado" },
+      [],
+      Date.parse("2026-11-05T12:00:00Z"),
+    ),
+    "urgente",
+  ); // independent commercial axis
+});
+test("identity supports both lengths without inventing or truncating digits", () => {
+  for (const ci of [
+    "0.000.000-0",
+    "000.000-0",
+    "00000000",
+    "0000000",
+    "0000000-0",
+  ])
+    assert.equal(validCI(ci), true);
+  for (const ci of [
+    "",
+    "123",
+    "a0000000",
+    "00.000.000-0",
+    "000 000 0",
+    "0.000.00-0",
+  ])
+    assert.equal(validCI(ci), false);
+  assert.equal(normalizeCI("000.000-0"), "0000000");
+  assert.equal(formatCI("00000000"), "0.000.000-0");
+  assert.equal(formatCI("0000000"), "000.000-0");
 });
 test("folder validation rejects spoofed domains, files and active URLs", () => {
   assert.ok(

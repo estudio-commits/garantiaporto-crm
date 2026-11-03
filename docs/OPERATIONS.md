@@ -40,6 +40,19 @@ La fecha de ingreso al CRM (`created_at`) es inmutable y se asigna en servidor. 
 
 Drive: solo se almacena un enlace HTTPS a una carpeta de drive.google.com, validado tanto en interfaz como en PostgreSQL. No hay cargas de archivos, copias, consultas de contenido, conectores ni modificación de permisos de Drive. Quien abre el enlace necesita acceso propio en Google Drive. La URL es visible a quienes pueden ver el caso.
 
-Actividad: `updated_at` cambia ante una modificación real de datos/estado, identificación, Clearing, campos personalizados o nuevo seguimiento. Guardar lo mismo y consultar una ficha no renuevan el reloj. Orden predeterminado de ambos pipelines: modificación más reciente; también se puede ordenar por ingreso. La advertencia visual aparece a partir de 48 horas exactas en casos no archivados, incluidos los finalizados; se recalcula cada minuto mientras el panel permanece abierto. No se envían notificaciones.
+Actividad: `updated_at` cambia ante una modificación real de datos/estado, identificación, Clearing, campos personalizados o nuevo seguimiento. Guardar lo mismo y consultar una ficha no renuevan el reloj. Orden predeterminado de ambos pipelines: modificación más reciente; también se puede ordenar por ingreso. La advertencia visual usa días calendario de America/Montevideo desde el último comentario (si no hay, ingreso): próximo al día siguiente, urgente desde el segundo. Excluye archivados y garantías aprobadas/rechazadas, no se basa en updated_at. Se recalcula cada minuto mientras el panel permanece abierto. No se envían notificaciones.
 
 Auditoría: se registran campo, valor anterior/nuevo, autor y fecha/hora de cambios nuevos. Identificación/ingresos y motivos de rechazo conservan visibilidad admin; Clearing requiere su permiso; los campos personalizados sensibles conservan visibilidad restringida. Las notas aparecen junto con los cambios en una única cronología. No es posible reconstruir valores anteriores que la versión inicial no hubiera guardado. El historial anterior disponible se conserva.
+
+
+## Actualización 007
+
+Aplicar `007_identity_comments_marketing.sql` después de 006 con backup y ensayo en staging. La CI canónica es `applications.national_id`: la migración copia las CI antiguas con formato reconocible, sin alterar fechas de actividad, y conserva originales restringidos en application_sensitive/form_events. No reasignar identidad por coincidencia de teléfono. Las solicitudes repetidas con igual CI pueden ser legítimas; conciliación de contactos pendiente. CI visible solo para admin y vendedor del caso mediante RLS; ingresos y eventos originales mantienen restricciones.
+
+Notas anteriores pasan a tipo comentario; nuevas notas admiten comentario/comunicacion/actualizacion, con fecha de servidor y autor autenticado. Alertas calculadas sobre notes.created_at, no sobre auditoría ni modificaciones de datos. Un comentario no cambia automáticamente etapas. Las métricas de primera comunicación incluyen solo notas explícitas de tipo comunicacion, no las notas históricas que no tienen esa clasificación.
+
+Marketing: primeros valores informados; originales completos y extras accesibles a admin. Payload data usa esquema estricto para no descartar claves desconocidas: enviar campos nuevos en extra. La proyección de extra al caso usa una lista de campos de marketing permitidos. No incluye adjuntos, ingresos ni extras arbitrarios. El emisor aún está pendiente.
+
+El indicador de nuevas cuenta casos comerciales nuevos, con garantía sin contactar y sin comentarios. Emisiones pendientes significa todas las aprobadas: falta acordar registro de emisión. Las estadísticas cuentan solicitudes, no personas únicas, e incluyen archivadas para no ocultar resultados. Las lecturas usan páginas de 500 bajo RLS; con grandes volúmenes se requerirán agregados/búsquedas en servidor.
+
+Ver [puesta online, riesgos y conexiones](ONLINE-WEB-WHATSAPP.md). El receptor externo sigue deshabilitado por defecto, la web actual no se modifica y el agente de WhatsApp está propuesto, no activado.

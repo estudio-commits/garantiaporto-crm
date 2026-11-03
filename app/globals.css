@@ -1645,3 +1645,151 @@ details > summary {
     top: -18px;
   }
 }
+
+/* Daily workspace */
+.home-welcome {
+  padding: 24px 0 36px;
+}
+.home-welcome h1 {
+  font-size: clamp(24px, 3vw, 34px);
+  margin: 0 0 24px;
+  letter-spacing: -0.7px;
+}
+.home-shortcuts {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 22px;
+}
+.home-shortcut {
+  padding: 28px;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 14px;
+  min-height: 340px;
+}
+.home-shortcut h2 {
+  font-size: 20px;
+  margin: 6px 0 0;
+}
+.home-shortcut p {
+  margin: 0;
+  color: var(--muted);
+}
+.home-shortcut .shortcut-count {
+  font-size: 48px;
+  line-height: 1.1;
+  font-weight: 500;
+}
+.home-shortcut button {
+  margin-top: auto;
+  width: 100%;
+  justify-content: center;
+}
+.new-leads {
+  background: #e8f2ff;
+  color: #075fc4;
+  border: 1px solid #aed4ff;
+  border-radius: 30px;
+  padding: 7px 13px;
+  font-weight: 600;
+}
+.workflow-switch {
+  margin: 0 0 24px;
+  padding: 6px;
+  background: #eaf0f7;
+  border-radius: 12px;
+  width: fit-content;
+  gap: 6px;
+}
+.workflow-switch button {
+  border: 0;
+  border-radius: 8px;
+  padding: 12px 20px;
+}
+.workflow-switch button.selected {
+  background: white;
+  box-shadow: 0 2px 6px #16335e12;
+}
+.pipeline-card .add-comment {
+  width: 100%;
+  justify-content: center;
+  margin-top: 14px;
+}
+.pipeline-card .guarantee-tag {
+  font-size: 11px;
+}
+.followup-chip,
+.followup-banner {
+  background: #fff3df;
+  color: #935000;
+  border-color: #f5c476;
+}
+.followup-chip.urgent,
+.followup-banner.urgent {
+  background: #ffdfbd;
+  color: #8d3600;
+  border: 1px solid #e9903d;
+  font-weight: 700;
+}
+.statistics > section,
+.statistics > .stats {
+  margin-bottom: 24px;
+}
+.statistics h3 {
+  margin-top: 30px;
+}
+.statistics table {
+  min-width: 760px;
+}
+.statistics td small {
+  display: block;
+  color: var(--muted);
+}
+.stage-metrics {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px 30px;
+}
+.marketing-values {
+  margin: 24px 0;
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 20px;
+}
+.marketing-values dt {
+  color: var(--muted);
+  font-size: 13px;
+}
+.marketing-values dd {
+  margin: 6px 0 0;
+  overflow-wrap: anywhere;
+}
+@media (max-width: 1100px) {
+  .home-shortcuts {
+    gap: 12px;
+  }
+  .home-shortcut {
+    padding: 20px;
+  }
+}
+@media (max-width: 760px) {
+  .home-shortcuts,
+  .marketing-values,
+  .stage-metrics {
+    grid-template-columns: 1fr;
+  }
+  .home-shortcut {
+    min-height: 260px;
+  }
+  .home-welcome {
+    padding-top: 12px;
+  }
+  .workflow-switch {
+    width: 100%;
+  }
+  .workflow-switch button {
+    flex: 1;
+    padding: 12px 8px;
+  }
+}

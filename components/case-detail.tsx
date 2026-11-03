@@ -11,12 +11,16 @@ import {
 } from "@/lib/domain";
 import { sourceName } from "@/lib/sources";
 import {
-  needsFollowUp,
+  formatCI,
+  validCI,
+  normalizeCI,
   dateTime,
   validDriveFolder,
   terminal,
 } from "@/lib/workflow";
-import EventViewer from "./event-viewer";
+import Marketing from "./marketing";
+import CommentForm from "./comment-form";
+import FollowUp from "./follow-up";
 export type Mutate = (
   k: keyof Store,
   v: Record<string, unknown>,
@@ -32,6 +36,7 @@ export default function CaseDetail({
   back,
   guarantee,
   compact = false,
+  now,
 }: {
   app: Application;
   store: Store;
@@ -41,9 +46,9 @@ export default function CaseDetail({
   back?: () => void;
   guarantee: (id: string, value: string) => Promise<boolean>;
   compact?: boolean;
+  now: number;
 }) {
   const [tab, setTab] = useState("Ficha"),
-    [note, setNote] = useState(""),
     [error, setError] = useState("");
   const admin = profile.role === "admin";
   const sensitive = store.sensitive.find((s) => s.application_id === a.id);
@@ -65,7 +70,8 @@ export default function CaseDetail({
         national_id: "Cédula",
         monthly_income: "Ingresos",
         rejection_reason: "Motivo del rechazo",
-        body: "Nota de seguimiento",
+        body: "Texto",
+        kind: "Tipo",
         value: "Valor personalizado",
         guarantee_type: "Tipo de garantía",
       }) as Record<string, string>
@@ -108,7 +114,10 @@ export default function CaseDetail({
       )?.actor_name,
       action: "followup",
       created_at: n.created_at,
-      changes: { body: { before: null, after: n.body } },
+      changes: {
+        kind: { before: null, after: human(n.kind || "comentario") },
+        body: { before: null, after: n.body },
+      },
     })),
   ];
   return (
@@ -127,13 +136,7 @@ export default function CaseDetail({
           </p>
         </div>
       </div>
-      {needsFollowUp(a) && (
-        <div className="followup-banner" role="status">
-          <Clock size={17} />
-          Hace 2 días o más que no se actualiza este cliente. Hacé un
-          seguimiento o actualizá sus datos.
-        </div>
-      )}
+      <FollowUp app={a} notes={store.notes} now={now} banner />
       <div className="case-dates">
         <span>
           Ingreso al CRM<strong>{dateTime(a.created_at)}</strong>
@@ -147,7 +150,7 @@ export default function CaseDetail({
         </span>
       </div>
       <div className="detail-tabs tabs">
-        {["Ficha", "Historial y seguimientos"].map((t) => (
+        {["Ficha", "Historial y seguimientos", "Marketing"].map((t) => (
           <button
             key={t}
             className={tab === t ? "selected" : ""}
@@ -177,9 +180,15 @@ export default function CaseDetail({
                   );
                   return;
                 }
+                const ci = String(f.get("national_id") || "").trim();
+                if (ci && !validCI(ci)) {
+                  setError("Cédula inválida. Usá 0.000.000-0 o 000.000-0.");
+                  return;
+                }
                 setError("");
                 await mutate("applications", {
                   id: a.id,
+                  national_id: ci ? normalizeCI(ci) : null,
                   full_name: String(f.get("name")).trim(),
                   phone: String(f.get("phone")).trim(),
                   rent_amount: f.get("rent") ? Number(f.get("rent")) : null,
@@ -200,6 +209,19 @@ export default function CaseDetail({
                     required
                     defaultValue={a.full_name}
                     maxLength={200}
+                  />
+                </label>
+                <label>
+                  Cédula de identidad
+                  <input
+                    name="national_id"
+                    defaultValue={a.national_id ? formatCI(a.national_id) : ""}
+                    maxLength={11}
+                    placeholder="0.000.000-0 o 000.000-0"
+                    onBlur={(e) => {
+                      if (validCI(e.target.value))
+                        e.target.value = formatCI(e.target.value);
+                    }}
                   />
                 </label>
                 <label>
@@ -302,9 +324,13 @@ export default function CaseDetail({
             </form>
             {admin && (
               <details className="extra-data">
-                <summary>
-                  Identificación e ingresos · Acceso restringido
-                </summary>
+                <summary>Ingresos · Acceso restringido</summary>
+                {!a.national_id && sensitive?.national_id && (
+                  <p>
+                    Identificación del registro anterior para revisar:{" "}
+                    {sensitive.national_id}
+                  </p>
+                )}
                 <form
                   onSubmit={(e) => {
                     e.preventDefault();
@@ -313,7 +339,6 @@ export default function CaseDetail({
                       "sensitive",
                       {
                         application_id: a.id,
-                        national_id: f.get("ci"),
                         monthly_income: f.get("income")
                           ? Number(f.get("income"))
                           : null,
@@ -324,13 +349,6 @@ export default function CaseDetail({
                   }}
                 >
                   <div className="form-grid">
-                    <label>
-                      Cédula
-                      <input
-                        name="ci"
-                        defaultValue={sensitive?.national_id || ""}
-                      />
-                    </label>
                     <label>
                       Ingresos declarados
                       <input
@@ -343,7 +361,7 @@ export default function CaseDetail({
                     </label>
                   </div>
                   <button className="secondary" disabled={busy}>
-                    Guardar identificación e ingresos
+                    Guardar ingresos
                   </button>
                 </form>
               </details>
@@ -500,42 +518,28 @@ export default function CaseDetail({
             )}
           </section>
         </>
+      ) : tab === "Marketing" ? (
+        <Marketing app={a} admin={admin} />
       ) : (
         <section className="card padded">
           <h2>Historial y seguimientos</h2>
-          <form
-            onSubmit={async (e) => {
-              e.preventDefault();
-              if (
-                await mutate(
-                  "notes",
-                  {
-                    id: crypto.randomUUID(),
-                    application_id: a.id,
-                    author_id: profile.id,
-                    body: note.trim(),
-                    created_at: new Date().toISOString(),
-                  },
-                  "insert",
-                )
+          <CommentForm
+            busy={busy}
+            save={(kind, body) =>
+              mutate(
+                "notes",
+                {
+                  id: crypto.randomUUID(),
+                  application_id: a.id,
+                  author_id: profile.id,
+                  kind,
+                  body,
+                  created_at: new Date().toISOString(),
+                },
+                "insert",
               )
-                setNote("");
-            }}
-          >
-            <label>
-              Nuevo seguimiento
-              <textarea
-                aria-label="Nueva nota"
-                value={note}
-                onChange={(e) => setNote(e.target.value)}
-                required
-                maxLength={10000}
-              />
-            </label>
-            <button className="primary" disabled={busy || !note.trim()}>
-              Agregar nota
-            </button>
-          </form>
+            }
+          />
           {history
             .filter(
               (ev) =>
@@ -593,12 +597,6 @@ export default function CaseDetail({
             <strong>Ingreso al CRM</strong>
             <small>{dateTime(a.created_at)}</small>
           </article>
-          <details>
-            <summary>Datos técnicos de origen y formulario</summary>
-            <p>Origen del cliente: {sourceName(a, store.sources)}</p>
-            <p>Medio de carga: {human(a.source)}</p>
-            {admin && <EventViewer applicationId={a.id} />}
-          </details>
           {(admin || profile.can_clearing) && (
             <details className="extra-data">
               <summary>Registro manual de Clearing</summary>

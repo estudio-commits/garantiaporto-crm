@@ -11,3 +11,12 @@ La base serializa por solicitud con advisory lock y conserva eventos. Parte 2 co
 Antes del adaptador real: leer popup, handlers JS/PHP, acciones Elementor, emails, submissions; identificar campos, confirmación de éxito, validación de consentimiento y transporte del identificador. La apertura de popup no es un envío. Mantener la precarga window.datosCotizadorGarantia. No usar parsing de emails. Auditar implementación antes de definir ID compartido.
 
 Pendiente en staging: cola duradera del emisor, reintentos con backoff, conciliación/manual replay, ajuste de la cuota de tasa y pruebas de caída con el stack WordPress real. El receptor solo no garantiza recuperar envíos que nunca llegaron. Conservar correo y Ads y obtener autorización separada para cambios del sitio.
+
+
+## Marketing e identidad (migración 007)
+
+`data` admite además fbclid, referrer, landing_page, form_id y button_id. Es estricto: una clave desconocida devuelve 422 y debe mapearse a extra; nunca se elimina silenciosamente. `extra` conserva campos escalares acotados en el evento original (admin). Campos conocidos de marketing dentro de extra se proyectan a attribution con prioridad del primer valor no vacío, sin exponer extras arbitrarios.
+
+CI válida de 7 u 8 dígitos, con o sin formato, completa applications.national_id sin sustituir una identidad existente distinta. CI inválida o conflictiva conserva el evento y marca discrepancia para revisión. La CI no es el identificador idempotente: solicitud_id/event_id siguen siendo UUID. La ausencia de CI en paso 1 no bloquea un prospecto.
+
+Ver [plan de conexión al formulario y WhatsApp](ONLINE-WEB-WHATSAPP.md) para cola, autenticación, consentimiento, puesta en producción y decisiones pendientes.

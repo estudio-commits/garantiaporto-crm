@@ -1,9 +1,10 @@
 "use client";
 import { useState } from "react";
-import { Search, GripVertical, ArrowUpRight } from "lucide-react";
+import { Search, GripVertical, Plus } from "lucide-react";
 import { Application, Store, states, human } from "@/lib/domain";
-import { needsFollowUp, dateTime, terminal } from "@/lib/workflow";
+import { formatCI, dateTime, terminal } from "@/lib/workflow";
 import { sourceName } from "@/lib/sources";
+import FollowUp from "./follow-up";
 export default function Pipeline({
   kind,
   admin,
@@ -13,6 +14,9 @@ export default function Pipeline({
   busy,
   move,
   open,
+  comment,
+  stageFilter,
+  setStageFilter,
 }: {
   kind: "commercial" | "guarantee";
   admin: boolean;
@@ -22,6 +26,9 @@ export default function Pipeline({
   busy: boolean;
   move: (id: string, stage: string) => Promise<boolean>;
   open: (id: string) => void;
+  comment: (id: string) => void;
+  stageFilter: string;
+  setStageFilter: (stage: string) => void;
 }) {
   const [search, setSearch] = useState(""),
     [source, setSource] = useState("all"),
@@ -33,11 +40,12 @@ export default function Pipeline({
   const stages = kind === "commercial" ? states.stage : states.guarantee_stage;
   const filtered = applications.filter(
     (a) =>
-      `${a.full_name} ${a.phone}`
+      `${a.full_name} ${a.phone} ${a.national_id || ""} ${formatCI(a.national_id)}`
         .toLowerCase()
         .includes(search.toLowerCase()) &&
       (source === "all" || (a.source_id || "unknown") === source) &&
-      (type === "all" || a.guarantee_type === type),
+      (type === "all" || a.guarantee_type === type) &&
+      (stageFilter === "all" || a[field] === stageFilter),
   );
   async function change(id: string, stage: string) {
     const a = applications.find((a) => a.id === id);
@@ -63,7 +71,7 @@ export default function Pipeline({
           <Search size={16} />
           <input
             aria-label="Buscar en pipeline"
-            placeholder="Buscar nombre o celular…"
+            placeholder="Nombre, cédula o celular…"
             value={search}
             onChange={(e) => setSearch(e.target.value)}
           />
@@ -98,12 +106,26 @@ export default function Pipeline({
             <option value="created_at">Fecha de ingreso</option>
           </select>
         </label>
+        <label>
+          Etapa
+          <select
+            aria-label="Filtrar etapa"
+            value={stageFilter}
+            onChange={(e) => setStageFilter(e.target.value)}
+          >
+            <option value="all">Todas las etapas</option>
+            {stages.map((s) => (
+              <option key={s} value={s}>
+                {human(s)}
+              </option>
+            ))}
+          </select>
+        </label>
         <span className="muted">{filtered.length} solicitudes</span>
       </div>
       <p className="pipeline-hint">
-        Abrí una tarjeta para ver la ficha sin salir del pipeline. Arrastrá o
-        usá el selector para cambiar de etapa. Los dos procesos son
-        independientes.
+        Abrí una tarjeta para ver la ficha. Arrastrala para cambiar de etapa o
+        actualizá el estado desde su ficha, también con teclado y en el celular.
       </p>
       <div className="sr-only" role="status">
         {status}
@@ -179,7 +201,7 @@ export default function Pipeline({
                   >
                     <div className="pipeline-card-top">
                       <span className="guarantee-tag">
-                        {human(a.guarantee_type)}
+                        Tipo de garantía: {human(a.guarantee_type)}
                       </span>
                       <GripVertical size={16} aria-hidden="true" />
                     </div>
@@ -188,17 +210,12 @@ export default function Pipeline({
                       onClick={() => open(a.id)}
                     >
                       {a.full_name}
-                      <ArrowUpRight size={15} />
                     </button>
-                    <small>{a.phone}</small>
-                    <small>Actualizado: {dateTime(a.updated_at)}</small>
-                    {needsFollowUp(a, now) && (
-                      <span className="followup-chip">
-                        Hacer seguimiento · 48 h sin cambios
-                      </span>
-                    )}
+                    <small>Cédula: {formatCI(a.national_id)}</small>
+                    <small>Ingreso: {dateTime(a.created_at)}</small>
+                    <FollowUp app={a} notes={store.notes} now={now} />
                     <div className="pipeline-source">
-                      {sourceName(a, store.sources)}
+                      Origen: {sourceName(a, store.sources)}
                     </div>
                     <strong className="pipeline-rent">
                       {a.rent_amount === null
@@ -206,35 +223,17 @@ export default function Pipeline({
                         : `${a.rent_currency || "Moneda sin informar"} ${a.rent_amount.toLocaleString("es-UY")}`}
                     </strong>
                     <div className="pipeline-owner">
+                      Usuario asignado:{" "}
                       {store.profiles.find((p) => p.id === a.assigned_user_id)
                         ?.full_name || "Sin asignar"}
                     </div>
-                    <label className="stage-selector">
-                      Mover a
-                      <select
-                        aria-label={`Etapa de ${a.full_name}`}
-                        disabled={
-                          busy ||
-                          (kind === "guarantee" &&
-                            !admin &&
-                            terminal(a.guarantee_stage))
-                        }
-                        value={a[field] || "sin_contactar"}
-                        onChange={(e) => change(a.id, e.target.value)}
-                      >
-                        {stages.map((s) => (
-                          <option
-                            key={s}
-                            value={s}
-                            disabled={
-                              kind === "guarantee" && !admin && terminal(s)
-                            }
-                          >
-                            {human(s)}
-                          </option>
-                        ))}
-                      </select>
-                    </label>
+                    <button
+                      className="secondary add-comment"
+                      disabled={busy}
+                      onClick={() => comment(a.id)}
+                    >
+                      <Plus size={15} /> Agregar comentario
+                    </button>
                   </article>
                 ))}
                 {!rows.length && (

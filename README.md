@@ -42,6 +42,21 @@ La migración 005 habilita estas funciones en Supabase. La demo se actualiza sin
 
 ## Procesos comerciales y de garantía
 
-Ahora hay dos pipelines independientes: comercial (nuevo cliente, en contacto, finalizado) y garantía (sin contactar, documentación solicitada/recibida, preaprobación cargada, aprobada/rechazada). Las tarjetas abren una ficha lateral sin salir del tablero. Se ordenan por última modificación o ingreso; a las 48 h sin actividad aparece una advertencia visual. Guardar sin cambiar datos no reinicia ese plazo.
+Ahora hay dos pipelines independientes: comercial (nuevo cliente, en contacto, finalizado) y garantía (sin contactar, documentación solicitada/recibida, preaprobación cargada, aprobada/rechazada). Las tarjetas abren una ficha lateral sin salir del tablero. Se ordenan por última modificación o ingreso; las alertas se basan en el último comentario y el día calendario de Uruguay (próximo al día siguiente, urgente desde el segundo), excluyendo garantías aprobadas/rechazadas y archivadas. Sin comentarios se usa el ingreso; editar datos no elimina la alerta.
 
-La ficha reúne datos del cliente, fecha de ingreso, fecha de solicitud, enlace de carpeta Drive y ambos estados. Documentos exclusivamente en Drive: el CRM solo guarda el enlace. Historial cronológico con valores anteriores/nuevos, responsables y seguimientos; datos sensibles mantienen sus permisos. Rechazo formal exige un motivo y respaldo; solo administración registra decisiones finales. Para Supabase se requiere migración 006; la demo migra los datos anteriores automáticamente.
+La ficha reúne datos del cliente, fecha de ingreso, fecha de solicitud, enlace de carpeta Drive y ambos estados. Documentos exclusivamente en Drive: el CRM solo guarda el enlace. Historial cronológico con valores anteriores/nuevos, responsables y seguimientos; datos sensibles mantienen sus permisos. Rechazo formal exige un motivo y respaldo; solo administración registra decisiones finales. Para Supabase se requieren las migraciones hasta 007; la demo migra los datos anteriores automáticamente.
+
+
+## Inicio, comentarios, marketing y estadísticas
+
+Menú principal: Inicio → Pipeline → Lista de clientes → Estadísticas; administración conserva Equipo, Control de datos e Integraciones. Inicio muestra únicamente carga nueva y accesos a solicitudes, preaprobaciones (documentación recibida) y emisiones (aprobadas). Hasta registrar una emisión explícita, todas las aprobadas cuentan como pendientes; no se deduce emisión de una aprobación.
+
+Pipeline reúne Gestión comercial / Gestión de garantía. Tarjetas con tipo, nombre, CI, ingreso, origen, alquiler y responsable; se mueven arrastrando o desde los estados de la ficha, accesible con teclado/móvil. El botón Agregar comentario abre tipo Comentario/Comunicación/Actualización y texto inicial editable. Registrar un comentario no infiere cambios de estado por su contenido.
+
+CI obligatoria en carga manual, opcional para leads web incompletos. Admite `0.000.000-0` y `000.000-0` o dígitos; se almacena sin separadores, conserva ceros y se presenta formateada. Se valida formato, no identidad ni dígito verificador. Sigue existiendo un UUID interno por solicitud: varias solicitudes de la misma CI no se fusionan automáticamente. Registros antiguos sin CI quedan como Sin informar.
+
+Estadísticas compara origen/campaña/tipo, decisiones y conversión, etapas actuales, rechazos y gestión del equipo. Cohortes por ingreso, incluidos archivados; comentarios por autor/fecha. No se inventan costos publicitarios ni rentabilidad. Marketing conserva atribución y muestra eventos originales a administración.
+
+La migración `007_identity_comments_marketing.sql` mantiene fechas de actividad al migrar CI, agrega tipo de comentario y extiende captura de marketing. CI pasa a ser accesible al vendedor asignado junto con el caso; ingresos, motivo sensible y eventos originales siguen restringidos. No se ejecutaron migraciones sobre una base de producción.
+
+**Publicación, seguridad, conexión web y WhatsApp:** [guía completa](docs/ONLINE-WEB-WHATSAPP.md). Para actualizar localmente: descargar la rama actualizada, abrir la carpeta en VS Code, `npm ci`, `npm run dev`. Usar la misma dirección/puerto conserva la demo del navegador.

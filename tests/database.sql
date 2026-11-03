@@ -76,6 +76,37 @@ do $$begin
  if exists(select 1 from audit_log where visibility='admin') then raise exception 'Private audit leaked';end if;
  begin update applications set guarantee_stage='sin_contactar' where id='10000000-0000-4000-8000-000000000001';raise exception 'Seller reopened formal decision';exception when raise_exception then if sqlerrm='Seller reopened formal decision' then raise;end if;end;
 end $$;
+-- Identity visible only within assigned cases; income and originals stay restricted.
+do $$declare oldtime timestamptz; n uuid; begin
+ update applications set national_id='000.000-0' where id='10000000-0000-4000-8000-000000000001';
+ if (select national_id from applications where id='10000000-0000-4000-8000-000000000001')<>'0000000' then raise exception 'CI normalization failed';end if;
+ select updated_at into oldtime from applications where id='10000000-0000-4000-8000-000000000001';
+ update applications set national_id='000.000-0' where id='10000000-0000-4000-8000-000000000001';
+ if (select updated_at from applications where id='10000000-0000-4000-8000-000000000001')<>oldtime then raise exception 'Formatted CI caused false activity';end if;
+ begin update applications set national_id='BAD' where id='10000000-0000-4000-8000-000000000001';raise exception 'Invalid CI accepted';exception when raise_exception then if sqlerrm='Invalid CI accepted' then raise;end if;end;
+ begin insert into applications(full_name,phone,assigned_user_id) values('Ficticio sin CI','000',auth.uid());raise exception 'Manual CI not required';exception when raise_exception then if sqlerrm='Manual CI not required' then raise;end if;end;
+ insert into applications(full_name,phone,national_id,assigned_user_id) values('Ficticio con CI','000','0.000.000-0',auth.uid()) returning id into n;
+ insert into notes(application_id,body,kind,created_at) values(n,'Seguimiento ficticio','comunicacion','2000-01-01');
+ if not exists(select 1 from notes where application_id=n and kind='comunicacion' and created_at=now()) then raise exception 'Typed note/server timestamp missing';end if;
+ if exists(select 1 from form_events) then raise exception 'Original payload leaked to seller';end if;
+end $$;
+reset role;
+do $$declare e jsonb; r jsonb; aid uuid; begin
+ e=jsonb_build_object('schema_version',1,'event_id',gen_random_uuid(),'solicitud_id',gen_random_uuid(),'step',1,'sent_at',now(),'data',jsonb_build_object('full_name','Marketing ficticio','phone','000','utm_campaign','Primera ficticia','button_origin','cotizador'),'extra',jsonb_build_object('landing_page','https://example.test','custom_private','original-only'));
+ r=ingest_event(e);aid=(r->>'application_id')::uuid;
+ if (select national_id from applications where id=aid) is not null then raise exception 'Missing CI invented';end if;
+ e=jsonb_set(jsonb_set(jsonb_set(e,'{event_id}',to_jsonb(gen_random_uuid())),'{step}','2'),'{data,national_id}','"0.000.000-0"');
+ e=jsonb_set(e,'{data,utm_campaign}','"Segunda ficticia"');perform ingest_event(e);
+ if (select national_id from applications where id=aid)<>'00000000' then raise exception 'Step 2 identity missing';end if;
+ if (select attribution->>'utm_campaign' from applications where id=aid)<>'Primera ficticia' then raise exception 'First attribution overwritten';end if;
+ if (select attribution->>'landing_page' from applications where id=aid)<>'https://example.test' then raise exception 'Extra marketing not projected';end if;
+ if (select attribution ? 'custom_private' from applications where id=aid) then raise exception 'Private extra projected';end if;
+ if not exists(select 1 from form_events where application_id=aid and payload->'data'->>'utm_campaign'='Segunda ficticia' and payload->'extra'->>'custom_private'='original-only') then raise exception 'Original payload lost';end if;
+ update applications set national_id='00000010' where id=aid;
+ e=jsonb_set(e,'{event_id}',to_jsonb(gen_random_uuid()));perform ingest_event(e);
+ if (select national_id from applications where id=aid)<>'00000010' then raise exception 'Corrected identity overwritten';end if;
+ if not exists(select 1 from form_events where event_id=(e->>'event_id')::uuid and discrepancy) then raise exception 'Identity discrepancy not recorded';end if;
+end $$;
 reset role;
 update profiles set active=false where id='00000000-0000-4000-8000-000000000002';
 set local role authenticated;

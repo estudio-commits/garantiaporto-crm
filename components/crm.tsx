@@ -31,14 +31,18 @@ import CaseDetail from "./case-detail";
 import Dialog from "./dialog";
 import {
   demoMutation,
-  needsFollowUp,
+  validCI,
+  normalizeCI,
+  formatCI,
   todayUy,
   terminal,
   rejectionReasons,
 } from "@/lib/workflow";
 import Pipeline from "./pipeline";
 import SourceManager from "./source-manager";
-import ApprovalMetrics from "./approval-metrics";
+import Statistics from "./statistics";
+import FollowUp from "./follow-up";
+import CommentForm from "./comment-form";
 import { sourceName, upgradeStore } from "@/lib/sources";
 import { seed, adminId } from "@/lib/demo";
 import {
@@ -103,6 +107,11 @@ export default function CRM() {
     [profile, setProfile] = useState<Profile | null>(null),
     [ready, setReady] = useState(false),
     [page, setPage] = useState("Inicio"),
+    [pipelineKind, setPipelineKind] = useState<"commercial" | "guarantee">(
+      "commercial",
+    ),
+    [pipelineStage, setPipelineStage] = useState("all"),
+    [commentTarget, setCommentTarget] = useState<string | null>(null),
     [selected, setSelected] = useState<string | null>(null),
     [preview, setPreview] = useState<string | null>(null),
     [decisionTarget, setDecisionTarget] = useState<{
@@ -154,9 +163,19 @@ export default function CRM() {
     setProfile(p.data);
     const next = { ...empty };
     for (const k of Object.keys(tables) as (keyof Store)[]) {
-      const r = await supabase.from(tables[k]).select("*");
-      if (r.error) throw Error(r.error.message);
-      (next[k] as unknown[]) = r.data || [];
+      const rows: unknown[] = [];
+      const orderKey = ["sensitive", "clearing", "values"].includes(k)
+        ? "application_id"
+        : "id";
+      for (let offset = 0; ; offset += 500) {
+        let query = supabase.from(tables[k]).select("*").order(orderKey);
+        if (k === "values") query = query.order("field_id");
+        const r = await query.range(offset, offset + 499);
+        if (r.error) throw Error(r.error.message);
+        rows.push(...(r.data || []));
+        if (!r.data || r.data.length < 500) break;
+      }
+      (next[k] as unknown[]) = rows;
     }
     setStore(next);
     setReady(true);
@@ -317,10 +336,18 @@ export default function CRM() {
     (a) => profile && visible(a, profile),
   );
   const active = allowed.filter((a) => !a.archived);
+  const newRequests = active.filter(
+    (a) =>
+      a.stage === "nuevo" &&
+      a.guarantee_stage === "sin_contactar" &&
+      !store.notes.some((n) => n.application_id === a.id),
+  ).length;
   const list = allowed
     .filter((a) => a.archived === archived)
     .filter((a) =>
-      `${a.full_name} ${a.phone}`.toLowerCase().includes(search.toLowerCase()),
+      `${a.full_name} ${a.phone} ${a.national_id || ""} ${formatCI(a.national_id)}`
+        .toLowerCase()
+        .includes(search.toLowerCase()),
     )
     .filter(
       (a) =>
@@ -345,6 +372,8 @@ export default function CRM() {
   const isAdmin = profile?.role === "admin";
   const navigate = (p: string) => {
     setPage(p);
+    setPipelineStage("all");
+    setCommentTarget(null);
     setSelected(null);
     setPreview(null);
     setFilter("todos");
@@ -359,8 +388,14 @@ export default function CRM() {
     e.preventDefault();
     const f = new FormData(e.currentTarget);
     const now = new Date().toISOString();
+    const ci = String(f.get("national_id") || "").trim();
+    if (!validCI(ci)) {
+      setMessage("Ingresá una cédula con formato 0.000.000-0 o 000.000-0.");
+      return;
+    }
     const a: Application = {
       id: crypto.randomUUID(),
+      national_id: normalizeCI(ci),
       full_name: String(f.get("name")).trim(),
       phone: String(f.get("phone")).trim(),
       rent_amount: f.get("rent") ? Number(f.get("rent")) : null,
@@ -431,9 +466,9 @@ export default function CRM() {
         <nav>
           {[
             ["Inicio", LayoutDashboard],
-            ["Solicitudes", Inbox],
-            ["Pipeline comercial", Columns3],
-            ["Pipeline de garantía", FileCheck2],
+            ["Pipeline", Columns3],
+            ["Lista de clientes", Inbox],
+            ["Estadísticas", Activity],
             ...(isAdmin
               ? [
                   ["Equipo", Users],
@@ -451,7 +486,7 @@ export default function CRM() {
               >
                 <I size={19} />
                 {String(name)}
-                {name === "Solicitudes" && (
+                {name === "Lista de clientes" && (
                   <span className="nav-count">{active.length}</span>
                 )}
               </button>
@@ -512,6 +547,9 @@ export default function CRM() {
                 );
                 setSelected(null);
                 setPage("Inicio");
+                setPreview(null);
+                setCommentTarget(null);
+                setDecisionTarget(null);
               }}
             >
               {store.profiles
@@ -543,6 +581,7 @@ export default function CRM() {
               mutate={mutate}
               back={() => setSelected(null)}
               guarantee={changeGuarantee}
+              now={now}
             />
           ) : (
             <>
@@ -551,18 +590,20 @@ export default function CRM() {
                   <div>
                     <h1>{page}</h1>
                     <p>
-                      {page === "Solicitudes"
+                      {page === "Lista de clientes"
                         ? "Todas tus solicitudes, organizadas en un solo lugar."
-                        : page.startsWith("Pipeline")
+                        : page === "Pipeline"
                           ? "Seguí cada oportunidad a lo largo del proceso comercial."
-                          : page === "Control de datos"
-                            ? "Administrá los orígenes y los campos de tus solicitudes."
-                            : page === "Equipo"
-                              ? "Administrá accesos y responsabilidades."
-                              : "Seguimiento de la recepción de formularios."}
+                          : page === "Estadísticas"
+                            ? "Orígenes, resultados y seguimiento del equipo."
+                            : page === "Control de datos"
+                              ? "Administrá los orígenes y los campos de tus solicitudes."
+                              : page === "Equipo"
+                                ? "Administrá accesos y responsabilidades."
+                                : "Seguimiento de la recepción de formularios."}
                     </p>
                   </div>
-                  {(page === "Solicitudes" || page.startsWith("Pipeline")) && (
+                  {(page === "Lista de clientes" || page === "Pipeline") && (
                     <button
                       className="primary"
                       onClick={() => setModal("lead")}
@@ -573,28 +614,55 @@ export default function CRM() {
                   )}
                 </div>
               )}
-              {page.startsWith("Pipeline") && (
-                <Pipeline
-                  applications={active}
-                  store={store}
-                  busy={busy}
-                  kind={
-                    page === "Pipeline comercial" ? "commercial" : "guarantee"
-                  }
-                  admin={isAdmin}
-                  now={now}
-                  move={
-                    page === "Pipeline comercial"
-                      ? (id, stage) => mutate("applications", { id, stage })
-                      : changeGuarantee
-                  }
-                  open={setPreview}
-                />
+              {page === "Pipeline" && (
+                <>
+                  <div
+                    className="tabs workflow-switch"
+                    aria-label="Gestión del pipeline"
+                  >
+                    {(
+                      [
+                        ["commercial", "Gestión comercial"],
+                        ["guarantee", "Gestión de garantía"],
+                      ] as const
+                    ).map(([kind, label]) => (
+                      <button
+                        key={kind}
+                        className={pipelineKind === kind ? "selected" : ""}
+                        aria-pressed={pipelineKind === kind}
+                        onClick={() => {
+                          setPipelineKind(kind);
+                          setPipelineStage("all");
+                        }}
+                      >
+                        {label}
+                      </button>
+                    ))}
+                  </div>
+                  <Pipeline
+                    key={pipelineKind}
+                    applications={active}
+                    store={store}
+                    busy={busy}
+                    kind={pipelineKind}
+                    admin={isAdmin}
+                    now={now}
+                    stageFilter={pipelineStage}
+                    setStageFilter={setPipelineStage}
+                    move={
+                      pipelineKind === "commercial"
+                        ? (id, stage) => mutate("applications", { id, stage })
+                        : changeGuarantee
+                    }
+                    open={setPreview}
+                    comment={setCommentTarget}
+                  />
+                </>
               )}
               {page === "Inicio" && (
                 <>
-                  <div className="overview-line">
-                    <h2>Resumen de actividad</h2>
+                  <section className="home-welcome">
+                    <h1>¿Querés cargar una nueva solicitud?</h1>
                     <button
                       className="primary"
                       onClick={() => setModal("lead")}
@@ -602,85 +670,98 @@ export default function CRM() {
                       <Plus size={18} />
                       Nueva solicitud
                     </button>
-                  </div>
-                  <div className="stats">
-                    {[
-                      {
-                        label: "Solicitudes activas",
-                        count: active.length,
-                        icon: Inbox,
-                        sub: "Tu cartera de oportunidades",
-                        color: "blue",
-                      },
-                      {
-                        label: "Sin contactar",
-                        count: active.filter(
-                          (a) => a.guarantee_stage === "sin_contactar",
-                        ).length,
-                        icon: Users,
-                        sub: "El próximo paso empieza acá",
-                        color: "orange",
-                      },
-                      {
-                        label: "En preaprobación",
-                        count: active.filter(
-                          (a) => a.guarantee_stage === "preaprobacion_cargada",
-                        ).length,
-                        icon: FileCheck2,
-                        sub: "Evaluación interna en curso",
-                        color: "purple",
-                      },
-                      {
-                        label: "Esperando documentación",
-                        count: active.filter(
-                          (a) =>
-                            a.guarantee_stage === "documentacion_solicitada",
-                        ).length,
-                        icon: Clock,
-                        sub: "Casos para seguir acompañando",
-                        color: "green",
-                      },
-                    ].map((s) => (
-                      <div className="stat" key={s.label}>
-                        <div className="stat-top">
-                          {s.label}
-                          <span className={`stat-icon ${s.color}`}>
-                            <s.icon size={19} />
-                          </span>
-                        </div>
-                        <strong>{s.count.toString().padStart(2, "0")}</strong>
-                        <small>{s.sub}</small>
-                      </div>
-                    ))}
-                  </div>
-                  <div className="attention">
-                    <span className="attention-icon">
-                      <Activity size={22} />
-                    </span>
-                    <div>
-                      <strong>
-                        {isAdmin
-                          ? `${active.filter((a) => !a.assigned_user_id).length} solicitudes esperan un responsable`
-                          : "Tu seguimiento hace la diferencia"}
+                  </section>
+                  <div className="home-shortcuts">
+                    <section className="card home-shortcut">
+                      <span className="stat-icon blue">
+                        <Inbox size={24} />
+                      </span>
+                      <h2>Solicitudes</h2>
+                      <strong className="shortcut-count">
+                        {
+                          active.filter(
+                            (a) =>
+                              a.stage !== "finalizado" &&
+                              !terminal(a.guarantee_stage),
+                          ).length
+                        }
                       </strong>
-                      <p>
-                        {isAdmin
-                          ? "Asigná las nuevas solicitudes para que tu equipo pueda dar el siguiente paso."
-                          : "Revisá tus solicitudes pendientes y registrá cada avance."}
-                      </p>
-                    </div>
-                    <button
-                      onClick={() => {
-                        setPage("Solicitudes");
-                        setFilter(isAdmin ? "sin_asignar" : "nuevo");
-                      }}
-                    >
-                      Revisar solicitudes <ArrowUpRight size={17} />
-                    </button>
+                      <p>Solicitudes en proceso</p>
+                      {newRequests > 0 && (
+                        <span className="new-leads">
+                          {newRequests} {newRequests === 1 ? "nueva" : "nuevas"}
+                        </span>
+                      )}
+                      <button
+                        className="secondary"
+                        onClick={() => {
+                          navigate("Pipeline");
+                          setPipelineKind("commercial");
+                        }}
+                      >
+                        Ir a solicitudes
+                      </button>
+                    </section>
+                    <section className="card home-shortcut">
+                      <span className="stat-icon purple">
+                        <FileCheck2 size={24} />
+                      </span>
+                      <h2>Preaprobaciones pendientes</h2>
+                      <strong className="shortcut-count">
+                        {
+                          active.filter(
+                            (a) =>
+                              a.guarantee_stage === "documentacion_recibida",
+                          ).length
+                        }
+                      </strong>
+                      <p>Clientes con documentación recibida</p>
+                      <button
+                        className="secondary"
+                        onClick={() => {
+                          navigate("Pipeline");
+                          setPipelineKind("guarantee");
+                          setPipelineStage("documentacion_recibida");
+                        }}
+                      >
+                        Ir a preaprobaciones
+                      </button>
+                    </section>
+                    <section className="card home-shortcut">
+                      <span className="stat-icon green">
+                        <ShieldCheck size={24} />
+                      </span>
+                      <h2>Emisiones pendientes</h2>
+                      <strong className="shortcut-count">
+                        {
+                          active.filter((a) => a.guarantee_stage === "aprobada")
+                            .length
+                        }
+                      </strong>
+                      <p>Clientes con garantía aprobada</p>
+                      <button
+                        className="secondary"
+                        onClick={() => {
+                          navigate("Pipeline");
+                          setPipelineKind("guarantee");
+                          setPipelineStage("aprobada");
+                        }}
+                      >
+                        Ir a emisiones
+                      </button>
+                    </section>
                   </div>
                 </>
               )}
-              {page === "Solicitudes" && (
+              {page === "Estadísticas" && (
+                <Statistics
+                  applications={allowed}
+                  store={store}
+                  admin={isAdmin}
+                  now={now}
+                />
+              )}
+              {page === "Lista de clientes" && (
                 <section className="card table-card">
                   <div className="section-heading">
                     <div>
@@ -714,7 +795,7 @@ export default function CRM() {
                         <Search size={16} />
                         <input
                           aria-label="Buscar solicitudes"
-                          placeholder="Buscar nombre o celular…"
+                          placeholder="Nombre, cédula o celular…"
                           value={search}
                           onChange={(e) => setSearch(e.target.value)}
                         />
@@ -849,13 +930,13 @@ export default function CRM() {
                                       {a.full_name}
                                     </button>
                                     <small>
-                                      {a.phone}{" "}
+                                      {formatCI(a.national_id)} · {a.phone}{" "}
                                       <span>· {date(a.created_at)}</span>
-                                      {needsFollowUp(a, now) && (
-                                        <span className="followup-chip">
-                                          Seguimiento pendiente · 48 h
-                                        </span>
-                                      )}
+                                      <FollowUp
+                                        app={a}
+                                        notes={store.notes}
+                                        now={now}
+                                      />
                                     </small>
                                   </div>
                                 </div>
@@ -939,19 +1020,6 @@ export default function CRM() {
                     </div>
                   </div>
                 </section>
-              )}
-              {page === "Inicio" && (
-                <ApprovalMetrics
-                  applications={active}
-                  sources={store.sources}
-                />
-              )}
-              {page === "Inicio" && (
-                <div className="bottom-note">
-                  <ShieldCheck size={15} />
-                  La preaprobación interna no implica aprobación formal de Porto
-                  Seguro.
-                </div>
               )}
               {page === "Equipo" && isAdmin && (
                 <section className="card padded">
@@ -1114,6 +1182,7 @@ export default function CRM() {
           <CaseDetail
             key={preview}
             compact
+            now={now}
             app={allowed.find((a) => a.id === preview)!}
             store={store}
             profile={profile}
@@ -1121,6 +1190,31 @@ export default function CRM() {
             mutate={mutate}
             guarantee={changeGuarantee}
           />
+        </Dialog>
+      )}
+      {commentTarget && allowed.some((a) => a.id === commentTarget) && (
+        <Dialog title="Agregar comentario" close={() => setCommentTarget(null)}>
+          <p>{allowed.find((a) => a.id === commentTarget)?.full_name}</p>
+          <CommentForm
+            busy={busy}
+            save={async (kind, body) => {
+              const ok = await mutate(
+                "notes",
+                {
+                  id: crypto.randomUUID(),
+                  application_id: commentTarget,
+                  author_id: profile.id,
+                  kind,
+                  body,
+                  created_at: new Date().toISOString(),
+                },
+                "insert",
+              );
+              if (ok) setCommentTarget(null);
+              return ok;
+            }}
+          />
+          {message && <p role="alert">{message}</p>}
         </Dialog>
       )}
       {decisionTarget && (
@@ -1204,6 +1298,20 @@ export default function CRM() {
                   Nombre completo
                   <input name="name" required maxLength={200} />
                 </label>
+                <label>
+                  Cédula de identidad
+                  <input
+                    name="national_id"
+                    required
+                    maxLength={11}
+                    placeholder="0.000.000-0 o 000.000-0"
+                    onBlur={(e) => {
+                      if (validCI(e.target.value))
+                        e.target.value = formatCI(e.target.value);
+                    }}
+                  />
+                </label>
+                {message && <p role="alert">{message}</p>}
                 <label>
                   Celular
                   <input name="phone" required minLength={3} maxLength={40} />

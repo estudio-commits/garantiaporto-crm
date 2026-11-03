@@ -1,4 +1,4 @@
-import type { Application, Store, Profile, Audit } from "./domain";
+import type { Application, Store, Profile, Audit, Note } from "./domain";
 export const rejectionReasons = [
   "ingresos_insuficientes",
   "score_insuficiente",
@@ -20,8 +20,49 @@ export const dateTime = (s: string) =>
     dateStyle: "short",
     timeStyle: "short",
   }).format(new Date(s));
-export const needsFollowUp = (a: Application, now = Date.now()) =>
-  !a.archived && now - Date.parse(a.updated_at || a.created_at) >= 48 * 3600000;
+// Compare calendar dates in Uruguay, never elapsed 24/48-hour windows.
+export const uyDay = (value: string | number) =>
+  new Intl.DateTimeFormat("en-CA", {
+    timeZone: "America/Montevideo",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  }).format(new Date(value));
+export function followUp(
+  a: Application,
+  notes: Note[],
+  now = Date.now(),
+): "próximo" | "urgente" | null {
+  if (a.archived || terminal(a.guarantee_stage)) return null;
+  const last = notes
+    .filter((n) => n.application_id === a.id)
+    .reduce(
+      (latest, n) => Math.max(latest, Date.parse(n.created_at)),
+      Date.parse(a.created_at),
+    );
+  const days = Math.round(
+    (Date.parse(uyDay(now)) - Date.parse(uyDay(last))) / 86400000,
+  );
+  return days >= 2 ? "urgente" : days >= 1 ? "próximo" : null;
+}
+export const normalizeCI = (value: string) =>
+  value.trim().replace(/[.\-]/g, "");
+export const validCI = (value: string) =>
+  /^(?:[0-9]{6,7}-[0-9]|[0-9]{7,8}|(?:[0-9]\.)?[0-9]{3}\.[0-9]{3}-[0-9])$/.test(
+    value.trim(),
+  );
+export function formatCI(value: string | null | undefined) {
+  if (!value) return "Sin informar";
+  if (!validCI(value)) return value; // preserve legacy values for review
+  const digits = normalizeCI(value),
+    body = digits.slice(0, -1);
+  return body.replace(/\B(?=(\d{3})+(?!\d))/g, ".") + "-" + digits.slice(-1);
+}
+export const noteDefaults = {
+  comentario: "A la espera de...",
+  comunicacion: "Seguimiento #1",
+  actualizacion: "Solicitando más documentación",
+} as const;
 export function validDriveFolder(v: string) {
   if (!v) return true;
   try {
@@ -100,6 +141,11 @@ export function demoMutation(
   if (k === "applications") {
     if (!validDriveFolder(String(next.drive_folder_url || "")))
       throw Error("Ingresá un enlace HTTPS a una carpeta de Google Drive.");
+    if (next.national_id) {
+      if (!validCI(String(next.national_id)))
+        throw Error("Cédula inválida. Usá 0.000.000-0 o 000.000-0.");
+      next.national_id = normalizeCI(String(next.national_id));
+    }
     next.updated_at = now;
   }
   const visibility: Audit["visibility"] =

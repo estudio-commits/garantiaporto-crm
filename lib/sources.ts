@@ -1,4 +1,4 @@
-import { migrateApplication } from "./workflow";
+import { migrateApplication, validCI, normalizeCI } from "./workflow";
 import type { Application, ClientSource, Store } from "./domain";
 export const WEB_SOURCE_ID = "40000000-0000-4000-8000-000000000001";
 export const REAL_ESTATE_SOURCE_ID = "40000000-0000-4000-8000-000000000002";
@@ -31,6 +31,14 @@ export function upgradeStore(s: Store): Store {
     ],
     applications: s.applications.map((a) => ({
       ...migrateApplication(a),
+      national_id:
+        a.national_id ??
+        (() => {
+          const previous = s.sensitive.find(
+            (row) => row.application_id === a.id,
+          )?.national_id;
+          return previous && validCI(previous) ? normalizeCI(previous) : null;
+        })(),
       source_id:
         a.source_id === undefined
           ? a.source === "web"

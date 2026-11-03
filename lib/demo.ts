@@ -25,6 +25,7 @@ export function seed(): Store {
   const applications: Application[] = names.map((full_name, i) => ({
     id: `10000000-0000-4000-8000-${String(i + 1).padStart(12, "0")}`,
     full_name,
+    national_id: `000000${i % 10}0`, // Synthetic examples only, no identity verification.
     phone: `000 000 ${String(i + 1).padStart(3, "0")}`,
     rent_amount: [28000, 35000, 22000, 42000, 31000, 18000][i % 6],
     rent_currency: "UYU",
