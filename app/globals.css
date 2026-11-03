@@ -1810,3 +1810,40 @@ details > summary {
     padding: 12px 8px;
   }
 }
+
+.phone-input {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+.phone-input input {
+  min-width: 0;
+  flex: 1;
+}
+.whatsapp-link {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  vertical-align: middle;
+  width: 36px;
+  height: 36px;
+  flex-shrink: 0;
+  border-radius: 8px;
+  color: #128c52;
+  background: #e8f7ee;
+  text-decoration: none;
+}
+.whatsapp-link:hover {
+  background: #cdefdb;
+  color: #086b3b;
+}
+.whatsapp-link.unavailable {
+  color: #8c98a4;
+  background: #f0f3f6;
+}
+.client-cell .whatsapp-link {
+  width: 28px;
+  height: 28px;
+  margin-left: 4px;
+}

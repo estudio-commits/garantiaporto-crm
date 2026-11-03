@@ -64,3 +64,7 @@ La migración `008_issuance.sql` agrega fecha/referencia de emisión con validac
 **Elementor Pro y tu cuenta WhatsApp Business:** [pasos específicos](docs/ELEMENTOR-WHATSAPP.md).
 
 **Publicación, seguridad, conexión web y WhatsApp:** [guía completa](docs/ONLINE-WEB-WHATSAPP.md). Para actualizar localmente: descargar la rama actualizada, abrir la carpeta en VS Code, `npm ci`, `npm run dev`. Usar la misma dirección/puerto conserva la demo del navegador.
+
+## Acceso manual a WhatsApp
+
+El ícono junto al celular abre `https://api.whatsapp.com/send?phone=…` en una pestaña nueva, desde la carga, ficha y lista de clientes. Normaliza celulares uruguayos (por ejemplo, `099 000 001` → `59899000001`), elimina separadores y reconoce +598/00598. Otros países requieren prefijo internacional explícito. Si el formato está incompleto o no es reconocible, el acceso no se habilita. No cambia el número guardado, no comprueba que tenga cuenta de WhatsApp y no envía mensajes ni registra un seguimiento automáticamente: abrir un chat no demuestra que se haya enviado un mensaje. No requiere API ni credenciales de Meta.

@@ -1,4 +1,5 @@
 "use client";
+import PhoneInput from "./phone-input";
 import IdentityInput from "./identity-input";
 import { useState } from "react";
 import { ArrowLeft, ExternalLink, Clock } from "lucide-react";
@@ -221,13 +222,7 @@ export default function CaseDetail({
                 </label>
                 <label>
                   Celular
-                  <input
-                    name="phone"
-                    required
-                    defaultValue={a.phone}
-                    minLength={3}
-                    maxLength={40}
-                  />
+                  <PhoneInput initial={a.phone} />
                 </label>
                 <label>
                   Alquiler mensual

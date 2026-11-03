@@ -1,4 +1,5 @@
 "use client";
+import PhoneInput, { WhatsAppLink } from "./phone-input";
 import IdentityInput from "./identity-input";
 import { useEffect, useState, useMemo, FormEvent } from "react";
 import {
@@ -936,6 +937,7 @@ export default function CRM() {
                                     </button>
                                     <small>
                                       {formatCI(a.national_id)} · {a.phone}{" "}
+                                      <WhatsAppLink phone={a.phone} />
                                       <span>· {date(a.created_at)}</span>
                                       <FollowUp
                                         app={a}
@@ -1310,7 +1312,7 @@ export default function CRM() {
                 {message && <p role="alert">{message}</p>}
                 <label>
                   Celular
-                  <input name="phone" required minLength={3} maxLength={40} />
+                  <PhoneInput />
                 </label>
                 <div className="form-grid">
                   <label>
