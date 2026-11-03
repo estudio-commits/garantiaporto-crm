@@ -1,4 +1,5 @@
 "use client";
+import IdentityInput from "./identity-input";
 import { useState } from "react";
 import { ArrowLeft, ExternalLink, Clock } from "lucide-react";
 import {
@@ -216,16 +217,7 @@ export default function CaseDetail({
                 </label>
                 <label>
                   Cédula de identidad
-                  <input
-                    name="national_id"
-                    defaultValue={a.national_id ? formatCI(a.national_id) : ""}
-                    maxLength={11}
-                    placeholder="0.000.000-0 o 000.000-0"
-                    onBlur={(e) => {
-                      if (validCI(e.target.value))
-                        e.target.value = formatCI(e.target.value);
-                    }}
-                  />
+                  <IdentityInput initial={a.national_id} />
                 </label>
                 <label>
                   Celular

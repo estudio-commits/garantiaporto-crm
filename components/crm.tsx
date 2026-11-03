@@ -1,4 +1,5 @@
 "use client";
+import IdentityInput from "./identity-input";
 import { useEffect, useState, useMemo, FormEvent } from "react";
 import {
   LayoutDashboard,
@@ -1304,16 +1305,7 @@ export default function CRM() {
                 </label>
                 <label>
                   Cédula de identidad
-                  <input
-                    name="national_id"
-                    required
-                    maxLength={11}
-                    placeholder="0.000.000-0 o 000.000-0"
-                    onBlur={(e) => {
-                      if (validCI(e.target.value))
-                        e.target.value = formatCI(e.target.value);
-                    }}
-                  />
+                  <IdentityInput required />
                 </label>
                 {message && <p role="alert">{message}</p>}
                 <label>
