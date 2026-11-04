@@ -529,7 +529,11 @@ export default function CRM() {
           </div>
         </div>
       </aside>
-      <div className="main">
+      <div
+        className={
+          page === "Pipeline" && !current ? "main pipeline-page" : "main"
+        }
+      >
         <header className="topbar">
           <span className="breadcrumb">
             Espacio de trabajo <ChevronRight size={14} />{" "}
@@ -612,6 +616,31 @@ export default function CRM() {
                                 : "Seguimiento de la recepción de formularios."}
                     </p>
                   </div>
+                  {page === "Pipeline" && (
+                    <div
+                      className="tabs workflow-switch"
+                      aria-label="Gestión del pipeline"
+                    >
+                      {(
+                        [
+                          ["commercial", "Gestión comercial"],
+                          ["guarantee", "Gestión de garantía"],
+                        ] as const
+                      ).map(([kind, label]) => (
+                        <button
+                          key={kind}
+                          className={pipelineKind === kind ? "selected" : ""}
+                          aria-pressed={pipelineKind === kind}
+                          onClick={() => {
+                            setPipelineKind(kind);
+                            setPipelineStage("all");
+                          }}
+                        >
+                          {label}
+                        </button>
+                      ))}
+                    </div>
+                  )}
                   {(page === "Lista de clientes" || page === "Pipeline") && (
                     <button
                       className="primary"
@@ -625,29 +654,6 @@ export default function CRM() {
               )}
               {page === "Pipeline" && (
                 <>
-                  <div
-                    className="tabs workflow-switch"
-                    aria-label="Gestión del pipeline"
-                  >
-                    {(
-                      [
-                        ["commercial", "Gestión comercial"],
-                        ["guarantee", "Gestión de garantía"],
-                      ] as const
-                    ).map(([kind, label]) => (
-                      <button
-                        key={kind}
-                        className={pipelineKind === kind ? "selected" : ""}
-                        aria-pressed={pipelineKind === kind}
-                        onClick={() => {
-                          setPipelineKind(kind);
-                          setPipelineStage("all");
-                        }}
-                      >
-                        {label}
-                      </button>
-                    ))}
-                  </div>
                   <Pipeline
                     key={pipelineKind}
                     applications={active}

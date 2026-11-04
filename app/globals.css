@@ -1847,3 +1847,199 @@ details > summary {
   height: 28px;
   margin-left: 4px;
 }
+
+/* Pipeline: compact controls, generous reading space. */
+.pipeline-page > .topbar {
+  display: none;
+}
+.pipeline-page > main {
+  max-width: none;
+  padding: 22px 28px 12px;
+}
+.pipeline-page .page-heading {
+  display: grid;
+  grid-template-columns: auto 1fr auto;
+  gap: 24px;
+  align-items: center;
+  margin-bottom: 16px;
+}
+.pipeline-page .page-heading h1 {
+  font-size: 26px;
+  margin: 0;
+}
+.pipeline-page .page-heading p {
+  display: none;
+}
+.pipeline-page .workflow-switch {
+  justify-self: start;
+  margin: 0;
+}
+.pipeline-page .workflow-switch button {
+  color: #526179;
+  min-height: 42px;
+  padding: 10px 16px;
+  font-size: 14px;
+}
+.pipeline-page .workflow-switch button.selected {
+  color: var(--blue);
+}
+.pipeline-page .page-heading > .primary {
+  min-height: 44px;
+  font-size: 14px;
+  padding: 10px 16px;
+}
+.pipeline-page .pipeline-tools {
+  gap: 10px 12px;
+}
+.pipeline-page .pipeline-tools label {
+  font-size: 13px;
+  gap: 4px;
+}
+.pipeline-page .pipeline-tools select,
+.pipeline-page .pipeline-tools .search input {
+  font-size: 14px;
+}
+.pipeline-page .pipeline-tools .search {
+  flex: 1 1 240px;
+  max-width: 340px;
+}
+.pipeline-page .pipeline-tools > .muted {
+  font-size: 13px;
+}
+.pipeline-page .pipeline-hint {
+  font-size: 13px;
+  margin: 12px 0;
+  color: #586a80;
+}
+.pipeline-page .pipeline-board {
+  gap: 18px;
+  height: calc(100dvh - 205px);
+  min-height: 420px;
+  max-height: none;
+}
+.pipeline-page > .demo-bar ~ main .pipeline-board {
+  height: calc(100dvh - 255px);
+}
+.pipeline-page .pipeline-column {
+  flex: 0 0 340px;
+  padding: 14px;
+  border-radius: 14px;
+}
+.pipeline-page .column-heading {
+  min-height: 48px;
+  padding: 4px 4px 16px;
+}
+.pipeline-page .column-heading h2 {
+  font-size: 16px;
+  line-height: 1.4;
+}
+.pipeline-page .column-heading b {
+  font-size: 14px;
+  color: #53657d;
+}
+.pipeline-page .pipeline-cards {
+  gap: 16px;
+  padding-right: 5px;
+  scrollbar-width: thin;
+}
+.pipeline-page .pipeline-card {
+  padding: 20px;
+  border-radius: 12px;
+  line-height: 1.55;
+}
+.pipeline-page .pipeline-card-top {
+  margin-bottom: 14px;
+}
+.pipeline-page .pipeline-card .guarantee-tag {
+  font-size: 13px;
+  color: #486587;
+  padding: 4px 9px;
+}
+.pipeline-page .pipeline-client {
+  font-size: 18px;
+  line-height: 1.4;
+  margin-bottom: 8px;
+  overflow-wrap: anywhere;
+}
+.pipeline-page .pipeline-card > small {
+  display: block;
+  font-size: 14px;
+  line-height: 1.65;
+  color: #526179;
+}
+.pipeline-page .pipeline-source {
+  font-size: 14px;
+  color: #496789;
+  margin: 16px 0 6px;
+}
+.pipeline-page .pipeline-rent {
+  font-size: 22px;
+}
+.pipeline-page .pipeline-owner {
+  font-size: 14px;
+  color: #526179;
+  margin-top: 16px;
+  padding-top: 14px;
+}
+.pipeline-page .pipeline-card .add-comment {
+  min-height: 44px;
+  font-size: 14px;
+  margin-top: 16px;
+}
+.pipeline-page .pipeline-card .followup-chip,
+.pipeline-page .pipeline-card .badge {
+  font-size: 13px;
+  margin-top: 10px;
+}
+@media (max-width: 1100px) {
+  .pipeline-page .page-heading {
+    gap: 12px;
+  }
+  .pipeline-page .workflow-switch button {
+    padding-inline: 12px;
+  }
+  .pipeline-page .pipeline-board {
+    height: calc(100dvh - 270px);
+  }
+}
+@media (max-width: 760px) {
+  .pipeline-page > main {
+    padding: 18px 14px 12px;
+  }
+  .pipeline-page .page-heading {
+    grid-template-columns: 1fr auto;
+    gap: 12px;
+  }
+  .pipeline-page .workflow-switch {
+    grid-column: 1 / -1;
+    grid-row: 2;
+    width: 100%;
+  }
+  .pipeline-page .workflow-switch button {
+    flex: 1;
+    white-space: normal;
+  }
+  .pipeline-page .pipeline-tools {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+  .pipeline-page .pipeline-tools label {
+    min-width: 0;
+    width: 100%;
+  }
+  .pipeline-page .pipeline-tools .search {
+    grid-column: 1 / -1;
+    max-width: none;
+  }
+  .pipeline-page .pipeline-tools > .muted {
+    grid-column: 1 / -1;
+    margin-left: 0;
+    padding: 0;
+  }
+  .pipeline-page .pipeline-column {
+    flex-basis: min(340px, calc(100vw - 96px));
+  }
+  .pipeline-page .pipeline-card {
+    padding: 16px;
+  }
+}

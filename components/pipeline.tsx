@@ -130,8 +130,7 @@ export default function Pipeline({
         <span className="muted">{filtered.length} solicitudes</span>
       </div>
       <p className="pipeline-hint">
-        Abrí una tarjeta para ver la ficha. Arrastrala para cambiar de etapa o
-        actualizá el estado desde su ficha, también con teclado y en el celular.
+        Abrí una tarjeta para ver la ficha o arrastrala para cambiar de etapa.
       </p>
       <div className="sr-only" role="status">
         {status}
