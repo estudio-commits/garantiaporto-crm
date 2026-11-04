@@ -207,7 +207,7 @@ export default function Pipeline({
                   >
                     <div className="pipeline-card-top">
                       <span className="guarantee-tag">
-                        Tipo de garantía: {human(a.guarantee_type)}
+                        {human(a.guarantee_type)}
                       </span>
                       <GripVertical size={16} aria-hidden="true" />
                     </div>
@@ -217,8 +217,10 @@ export default function Pipeline({
                     >
                       {a.full_name}
                     </button>
-                    <small>Cédula: {formatCI(a.national_id)}</small>
-                    <small>Ingreso: {dateTime(a.created_at)}</small>
+                    <small aria-label="Cédula">{formatCI(a.national_id)}</small>
+                    <small aria-label="Fecha de ingreso">
+                      {dateTime(a.created_at)}
+                    </small>
                     {a.issued_date && (
                       <span className="badge aprobada">
                         Emitida · {a.issued_date}
@@ -226,7 +228,7 @@ export default function Pipeline({
                     )}
                     <FollowUp app={a} notes={store.notes} now={now} />
                     <div className="pipeline-source">
-                      Origen: {sourceName(a, store.sources)}
+                      {sourceName(a, store.sources)}
                     </div>
                     <strong className="pipeline-rent">
                       {a.rent_amount === null
@@ -234,7 +236,7 @@ export default function Pipeline({
                         : `${a.rent_currency || "Moneda sin informar"} ${a.rent_amount.toLocaleString("es-UY")}`}
                     </strong>
                     <div className="pipeline-owner">
-                      Usuario asignado:{" "}
+                      Usuario:{" "}
                       {store.profiles.find((p) => p.id === a.assigned_user_id)
                         ?.full_name || "Sin asignar"}
                     </div>

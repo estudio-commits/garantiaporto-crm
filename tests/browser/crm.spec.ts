@@ -127,9 +127,10 @@ test("independent boards drag, preview and full card content without move select
     name: "Solicitud Lucía Ejemplo",
     exact: true,
   });
-  await expect(card).toContainText("Tipo de garantía: Universitaria");
-  await expect(card).toContainText("Cédula: 0.000.000-0");
-  await expect(card).toContainText("Ingreso:");
+  await expect(card).toContainText("Universitaria");
+  await expect(card).toContainText("0.000.000-0");
+  await expect(card.locator('[aria-label="Fecha de ingreso"]')).not.toBeEmpty();
+  await expect(card).toContainText("Usuario:");
   await expect(card.locator("select")).toHaveCount(0);
   await card.dragTo(
     page.getByRole("region", { name: "Etapa En contacto", exact: true }),
