@@ -1,6 +1,8 @@
 <?php
 /** Porto CRM / Elementor bridge. Build WPCode snippet with build-snippet.py. */
-if (!defined('ABSPATH') || class_exists('Porto_CRM_Elementor_Bridge_V1')) { return; }
+if (!defined('ABSPATH')) { return; }
+// Declare conditionally: an unconditional PHP class exists before execution reaches the guard.
+if (!class_exists('Porto_CRM_Elementor_Bridge_V1')) {
 final class Porto_CRM_Elementor_Bridge_V1 {
     const OPTION = 'porto_crm_bridge_v1';
     const CRON = 'porto_crm_bridge_tick_v1';
@@ -216,3 +218,4 @@ final class Porto_CRM_Elementor_Bridge_V1 {
     }
 }
 Porto_CRM_Elementor_Bridge_V1::boot();
+}

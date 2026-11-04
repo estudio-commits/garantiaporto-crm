@@ -1,7 +1,9 @@
 <?php
 // Isolated WordPress API stubs; no WordPress site, clients or network requests.
 define('ABSPATH', '/synthetic-wordpress/');
-function add_action(...$args){} function add_filter(...$args){}
+$hooks=array();
+function add_action(...$args){global $hooks;$hooks[]=$args[0];}
+function add_filter(...$args){global $hooks;$hooks[]=$args[0];}
 $options=array();
 function get_option($key,$fallback=false){global $options;return $options[$key]??$fallback;}
 function update_option($key,$value,...$args){global $options;$options[$key]=$value;return true;}
@@ -28,6 +30,12 @@ function wp_remote_retrieve_body($r){return json_encode(array('application_id'=>
 function wp_remote_retrieve_header(...$args){return '120';}
 require __DIR__.'/../integrations/wordpress/bridge.php';
 $class='Porto_CRM_Elementor_Bridge_V1';
+check(in_array('admin_menu',$hooks,true),'boot must register settings menu');
+check(in_array('admin_init',$hooks,true),'boot must register table installation');
+check(in_array('elementor_pro/forms/new_record',$hooks,true),'boot must register Elementor hook');
+$hook_count=count($hooks);
+require __DIR__.'/../integrations/wordpress/bridge.php';
+check(count($hooks)===$hook_count,'second inclusion must not duplicate handlers');
 $f=array('solicitud_id'=>'10000000-0000-4000-8000-000000000001','event_id'=>'10000000-0000-4000-8000-000000000002',
  'nombre'=>'Persona Ficticia','celular'=>'099123456','alquiler'=>'$25.000','moneda'=>'UYU',
  'boton_origen'=>'Cotizador ficticio','url_origen'=>'https://example.test/?utm_source=ficticio&gclid=click-ficticio&gad_campaignid=123','pagina_origen'=>'Página ficticia');
