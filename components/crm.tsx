@@ -165,21 +165,23 @@ export default function CRM() {
     }
     setProfile(p.data);
     const next = { ...empty };
-    for (const k of Object.keys(tables) as (keyof Store)[]) {
-      const rows: unknown[] = [];
-      const orderKey = ["sensitive", "clearing", "values"].includes(k)
-        ? "application_id"
-        : "id";
-      for (let offset = 0; ; offset += 500) {
-        let query = supabase.from(tables[k]).select("*").order(orderKey);
-        if (k === "values") query = query.order("field_id");
-        const r = await query.range(offset, offset + 499);
-        if (r.error) throw Error(r.error.message);
-        rows.push(...(r.data || []));
-        if (!r.data || r.data.length < 500) break;
-      }
-      (next[k] as unknown[]) = rows;
-    }
+    await Promise.all(
+      (Object.keys(tables) as (keyof Store)[]).map(async (k) => {
+        const rows: unknown[] = [];
+        const orderKey = ["sensitive", "clearing", "values"].includes(k)
+          ? "application_id"
+          : "id";
+        for (let offset = 0; ; offset += 500) {
+          let query = supabase!.from(tables[k]).select("*").order(orderKey);
+          if (k === "values") query = query.order("field_id");
+          const r = await query.range(offset, offset + 499);
+          if (r.error) throw Error(r.error.message);
+          rows.push(...(r.data || []));
+          if (!r.data || r.data.length < 500) break;
+        }
+        (next[k] as unknown[]) = rows;
+      }),
+    );
     setStore(next);
     setReady(true);
   }
@@ -233,7 +235,22 @@ export default function CRM() {
           throw Error(
             "No se pudo guardar: el registro ya no está disponible o no tenés permiso.",
           );
-        await load();
+        if (k === "applications" && mode === "update" && r.data) {
+          const confirmed = r.data as Application[];
+          setStore((previous) => ({
+            ...previous,
+            applications: previous.applications.map(
+              (a) => confirmed.find((row) => row.id === a.id) || a,
+            ),
+          }));
+        }
+        try {
+          await load();
+        } catch {
+          setMessage(
+            "El cambio se guardó, pero no se pudo actualizar toda la información. Actualizá la página para volver a cargarla.",
+          );
+        }
       } else {
         setStore(demoMutation(store, k, value, mode, match, profile!));
       }
@@ -534,17 +551,6 @@ export default function CRM() {
           page === "Pipeline" && !current ? "main pipeline-page" : "main"
         }
       >
-        <header className="topbar">
-          <span className="breadcrumb">
-            Espacio de trabajo <ChevronRight size={14} />{" "}
-            <strong>{current ? "Detalle de solicitud" : page}</strong>
-          </span>
-          <div className="top-actions">
-            <span className="live-dot" />
-            {demo ? "Demo · datos ficticios" : "Conectado"}
-            <span className="mini-avatar">{profile.full_name[0]}</span>
-          </div>
-        </header>
         {demo && (
           <div className="demo-bar">
             <span>

@@ -1,5 +1,5 @@
 "use client";
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { Search, GripVertical, Plus } from "lucide-react";
 import { Application, Store, states, human } from "@/lib/domain";
 import { formatCI, dateOnly, terminal, pendingIssuance } from "@/lib/workflow";
@@ -37,35 +37,60 @@ export default function Pipeline({
     [status, setStatus] = useState("");
   const [order, setOrder] = useState("updated_at");
   const field = kind === "commercial" ? "stage" : "guarantee_stage";
+  const moving = useRef(false);
+  const [pending, setPending] = useState<Application | null>(null);
   const stages = kind === "commercial" ? states.stage : states.guarantee_stage;
-  const filtered = applications.filter(
-    (a) =>
-      `${a.full_name} ${a.phone} ${a.national_id || ""} ${formatCI(a.national_id)}`
-        .toLowerCase()
-        .includes(search.toLowerCase()) &&
-      (source === "all" || (a.source_id || "unknown") === source) &&
-      (type === "all" || a.guarantee_type === type) &&
-      (stageFilter === "all" ||
-        (stageFilter === "emisiones_pendientes"
-          ? pendingIssuance(a)
-          : a[field] === stageFilter)),
-  );
+  const filtered = applications
+    .map((a) => (pending?.id === a.id ? pending : a))
+    .filter(
+      (a) =>
+        `${a.full_name} ${a.phone} ${a.national_id || ""} ${formatCI(a.national_id)}`
+          .toLowerCase()
+          .includes(search.toLowerCase()) &&
+        (source === "all" || (a.source_id || "unknown") === source) &&
+        (type === "all" || a.guarantee_type === type) &&
+        (stageFilter === "all" ||
+          (stageFilter === "emisiones_pendientes"
+            ? pendingIssuance(a)
+            : a[field] === stageFilter)),
+    );
   async function change(id: string, stage: string) {
     const a = applications.find((a) => a.id === id);
-    if (!a || busy || a[field] === stage) return;
+    if (!a || busy || moving.current || a[field] === stage) return;
     if (
       kind === "guarantee" &&
       !admin &&
       (terminal(stage) || terminal(a.guarantee_stage))
     )
       return;
-    const ok = await move(id, stage);
-    setStatus(
-      ok
-        ? `${a.full_name}: ${human(stage)}`
-        : "Movimiento pendiente de confirmación o no guardado. Conserva su etapa anterior.",
-    );
+    moving.current = true;
     setOver(null);
+    // Formal decisions still wait for their evidence dialog before changing columns.
+    const previewMove =
+      kind === "commercial" || (!terminal(stage) && !a.issued_date);
+    if (previewMove) {
+      setPending({
+        ...a,
+        [field]: stage,
+        updated_at: new Date().toISOString(),
+      });
+      setStatus(`Guardando movimiento de ${a.full_name}…`);
+    }
+    try {
+      const ok = await move(id, stage);
+      setStatus(
+        ok
+          ? `${a.full_name}: ${human(stage)}`
+          : "Movimiento pendiente de confirmación o no guardado. Conserva su etapa anterior.",
+      );
+    } catch {
+      setStatus(
+        "No se pudo guardar el movimiento. La tarjeta volvió a su etapa anterior.",
+      );
+    } finally {
+      setPending(null);
+      moving.current = false;
+    }
   }
   return (
     <>
@@ -163,7 +188,7 @@ export default function Pipeline({
               aria-label={`Etapa ${human(stage)}`}
               className={`pipeline-column ${over === stage ? "drag-over" : ""}`}
               onDragOver={(e) => {
-                if (!busy) {
+                if (!busy && !moving.current) {
                   e.preventDefault();
                   e.dataTransfer.dropEffect = "move";
                   setOver(stage);
@@ -187,6 +212,7 @@ export default function Pipeline({
                     key={a.id}
                     draggable={
                       !busy &&
+                      !pending &&
                       (kind === "commercial" ||
                         admin ||
                         !terminal(a.guarantee_stage))
@@ -205,6 +231,7 @@ export default function Pipeline({
                     }}
                     onDragEnd={() => setOver(null)}
                     aria-label={`Solicitud ${a.full_name}`}
+                    aria-busy={pending?.id === a.id}
                   >
                     <div className="pipeline-card-top">
                       <span className="guarantee-tag">
@@ -212,6 +239,9 @@ export default function Pipeline({
                       </span>
                       <GripVertical size={16} aria-hidden="true" />
                     </div>
+                    {pending?.id === a.id && (
+                      <small role="status">Guardando…</small>
+                    )}
                     <button
                       className="pipeline-client"
                       onClick={() => open(a.id)}
