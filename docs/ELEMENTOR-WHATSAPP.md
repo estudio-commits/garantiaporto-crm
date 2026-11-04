@@ -2,6 +2,10 @@
 
 Confirmado por el usuario: el sitio usa WordPress con Elementor Pro y su widget Formulario. Ya existe WhatsApp Business y portfolio comercial de Meta; todavía no está habilitada la API. No se ha cambiado la web ni creado/configurado servicios externos desde este repositorio.
 
+## Adaptador preparado para WPCode
+
+Ya se confirmaron dos formularios independientes en un popup, con recopilación de envíos y correo. El adaptador y los pasos de instalación están en [integrations/wordpress/README.md](../integrations/wordpress/README.md). Viene con captura y envío desactivados. Falta validarlo en el WordPress real antes de activar producción. Las notas siguientes describen el diseño y los controles de la integración.
+
 ## Elementor Pro: integrar sin perder el primer paso
 
 Hay que revisar cómo están construidos los dos pasos. El campo **Step** de un único formulario Elementor suele dividir la interfaz, pero el envío ocurre al final; pulsar “Siguiente” no garantiza que haya un registro persistido. Si este es el caso, un webhook al envío final no satisface el requisito de crear el lead desde el primer paso.
