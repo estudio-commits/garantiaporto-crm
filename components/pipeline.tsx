@@ -2,7 +2,7 @@
 import { useState } from "react";
 import { Search, GripVertical, Plus } from "lucide-react";
 import { Application, Store, states, human } from "@/lib/domain";
-import { formatCI, dateTime, terminal, pendingIssuance } from "@/lib/workflow";
+import { formatCI, dateOnly, terminal, pendingIssuance } from "@/lib/workflow";
 import { sourceName } from "@/lib/sources";
 import FollowUp from "./follow-up";
 export default function Pipeline({
@@ -148,10 +148,12 @@ export default function Pipeline({
             .sort(
               (a, b) =>
                 (order === "created_at"
-                  ? b.created_at
+                  ? (b.requested_date || b.created_at).slice(0, 10)
                   : b.updated_at
                 ).localeCompare(
-                  order === "created_at" ? a.created_at : a.updated_at,
+                  order === "created_at"
+                    ? (a.requested_date || a.created_at).slice(0, 10)
+                    : a.updated_at,
                 ) ||
                 b.created_at.localeCompare(a.created_at) ||
                 a.id.localeCompare(b.id),
@@ -219,7 +221,10 @@ export default function Pipeline({
                     </button>
                     <small aria-label="Cédula">{formatCI(a.national_id)}</small>
                     <small aria-label="Fecha de ingreso">
-                      {dateTime(a.created_at)}
+                      Ingreso: {dateOnly(a.requested_date || a.created_at)}
+                    </small>
+                    <small>
+                      Última actualización: {dateOnly(a.updated_at)}
                     </small>
                     {a.issued_date && (
                       <span className="badge aprobada">

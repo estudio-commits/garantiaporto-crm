@@ -75,21 +75,6 @@ try:
  assert sql("select issued_reference_unknown from applications where decision='aprobada'").strip()=='f'
  sql("update applications set issued_date=null,issued_reference=null where decision='aprobada'; update applications set guarantee_stage='sin_contactar' where decision='aprobada'")
  assert sql("select count(*) from applications where decision_date_unknown or issued_reference_unknown").strip()=='0'
- # Historical entry correction keeps CRM activity unchanged and is repeatable.
- before_activity=sql("select string_agg(id::text||updated_at::text, ',' order by id) from applications")
- sql("insert into applications(full_name,phone) values('Cliente manual ficticio','59899123456')")
- manual_date=sql("select created_at from applications where full_name='Cliente manual ficticio'")
- correction=(ROOT/'supabase/migrations/010_historical_entry_dates.sql').read_text()
- # Mark fixture events as historical, as actual importer payloads do.
- sql("update form_events set payload=payload||'{\"historical\":true}'::jsonb")
- sql(correction)
- assert sql("select count(*) from applications where created_at='2026-10-20T12:00:00Z'").strip()=='2'
- assert sql("select created_at from applications where full_name='Cliente manual ficticio'")==manual_date
- assert sql("select string_agg(id::text||updated_at::text, ',' order by id) from applications where full_name<>'Cliente manual ficticio'")==before_activity
- assert sql("select count(*) from audit_log where action='historical_entry_date'").strip()=='2'
- sql(correction)
- assert sql("select count(*) from audit_log where action='historical_entry_date'").strip()=='2'
- assert sql("select tgenabled from pg_trigger where tgname='guard_application'").strip()=='O'
  print('PASS: synthetic import, assignment, original evidence, rent history, unknown dates/references, replay, collisions, missing owner, atomic rollback and seller permissions.')
 finally:
  subprocess.run(['docker','rm','-f',container],stdout=subprocess.DEVNULL,stderr=subprocess.DEVNULL)

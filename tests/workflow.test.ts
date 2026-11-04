@@ -8,6 +8,7 @@ import {
   validCI,
   normalizeCI,
   formatCI,
+  dateOnly,
   validDriveFolder,
   migrateApplication,
 } from "../lib/workflow";
@@ -246,4 +247,9 @@ test("historical issuance can be edited by its seller without inventing a policy
       ),
     /administración/,
   );
+});
+
+test("card dates preserve calendar dates and convert timestamps to Uruguay without time", () => {
+  assert.equal(dateOnly("2026-11-03"), "03/11/2026");
+  assert.equal(dateOnly("2026-11-04T01:00:00Z"), "03/11/2026");
 });

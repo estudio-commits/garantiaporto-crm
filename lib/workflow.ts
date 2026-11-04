@@ -56,6 +56,15 @@ export const dateTime = (s: string) =>
     dateStyle: "short",
     timeStyle: "short",
   }).format(new Date(s));
+export const dateOnly = (s: string) => {
+  if (/^\d{4}-\d{2}-\d{2}$/.test(s)) return s.split("-").reverse().join("/");
+  return new Intl.DateTimeFormat("es-UY", {
+    timeZone: "America/Montevideo",
+    day: "2-digit",
+    month: "2-digit",
+    year: "numeric",
+  }).format(new Date(s));
+};
 // Compare calendar dates in Uruguay, never elapsed 24/48-hour windows.
 export const uyDay = (value: string | number) =>
   new Intl.DateTimeFormat("en-CA", {

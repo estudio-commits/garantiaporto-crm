@@ -22,7 +22,3 @@ La fecha de ingreso al CRM es la de importación; la fecha de solicitud proviene
 Una aprobación documentada puede tener fecha original desconocida mediante `decision_date_unknown`; sigue requiriendo referencia a su respaldo. Una emisión confirmada puede carecer de número de póliza mediante `issued_reference_unknown`, pero requiere fecha de emisión y garantía aprobada. La interfaz muestra estos faltantes explícitamente. Completar la evidencia elimina la marca de desconocido. Vendedores no pueden modificar estas excepciones; los formularios habituales siguen exigiendo evidencia completa.
 
 No se consulta Clearing ni se emiten pólizas mediante esta carga. Los resultados históricos llevan su procedencia y no representan verificaciones nuevas. No se envían mensajes ni se activa WhatsApp.
-
-## Fecha de ingreso original (010)
-
-Después de importar, ejecutar `010_historical_entry_dates.sql` para que la fecha de ingreso refleje el primer formulario original. La corrección solo alcanza fichas con marcador de importación y correos históricos; conserva la fecha anterior en el historial, no altera la última actividad y es repetible. No modifica las altas manuales ni sus fechas. La fecha de solicitud conserva su valor original.
