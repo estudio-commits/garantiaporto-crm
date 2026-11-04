@@ -213,3 +213,37 @@ test("issuance is admin-only, requires approval and evidence, and remains audita
     { before: "FICTICIO-001", after: null },
   );
 });
+
+test("historical issuance can be edited by its seller without inventing a policy reference", () => {
+  const s = seed();
+  const seller = s.profiles[1];
+  const a = s.applications[0];
+  a.assigned_user_id = seller.id;
+  a.guarantee_stage = "aprobada";
+  a.decision = "aprobada";
+  a.issued_date = "2026-11-03";
+  a.issued_reference = null;
+  a.issued_reference_unknown = true;
+  assert.equal(pendingIssuance(a), false);
+  const updated = demoMutation(
+    s,
+    "applications",
+    { id: a.id, summary: "Seguimiento ficticio" },
+    "update",
+    "id",
+    seller,
+  );
+  assert.equal(updated.applications[0].issued_reference, null);
+  assert.throws(
+    () =>
+      demoMutation(
+        s,
+        "applications",
+        { id: a.id, issued_reference_unknown: false },
+        "update",
+        "id",
+        seller,
+      ),
+    /administración/,
+  );
+});

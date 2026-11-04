@@ -23,7 +23,8 @@ export default function Issuance({
       {app.issued_date ? (
         <p>
           Emitida el <strong>{app.issued_date}</strong> · Referencia:{" "}
-          {app.issued_reference}
+          {app.issued_reference ||
+            "Pendiente de confirmar (registro histórico)"}
         </p>
       ) : (
         <p>Garantía aprobada, pendiente de emisión.</p>
@@ -63,6 +64,7 @@ export default function Issuance({
                 const f = new FormData(e.currentTarget);
                 const values = {
                   issued_date: String(f.get("date")),
+                  issued_reference_unknown: false,
                   issued_reference: String(f.get("reference")).trim(),
                 };
                 try {
@@ -136,6 +138,7 @@ export default function Issuance({
                       id: app.id,
                       issued_date: null,
                       issued_reference: null,
+                      issued_reference_unknown: false,
                     })
                   ) {
                     setAction(null);

@@ -57,7 +57,9 @@ export default function EventViewer({
             {e.discrepancy ? " · Discrepancia para revisión" : ""}
             {e.out_of_order ? " · Recibida fuera de orden" : ""}
           </summary>
-          <small>{e.received_at}</small>
+          <small>
+            Envío original: {e.sent_at} · Registro en CRM: {e.received_at}
+          </small>
           <pre>{JSON.stringify(e.payload, null, 2)}</pre>
         </details>
       ))}

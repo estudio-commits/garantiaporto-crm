@@ -70,6 +70,8 @@ export default function CaseDetail({
         requested_date: "Fecha de solicitud",
         issued_date: "Fecha de emisión",
         issued_reference: "Referencia de emisión",
+        issued_reference_unknown: "Referencia de emisión pendiente",
+        decision_date_unknown: "Fecha original de aprobación no informada",
         drive_folder_url: "Carpeta de Drive",
         summary: "Comentarios",
         national_id: "Cédula",
@@ -487,8 +489,12 @@ export default function CaseDetail({
             )}
             {terminal(a.guarantee_stage) && (
               <p className="muted">
-                Decisión formal: {a.decision_date || "Sin fecha"} ·{" "}
-                {a.decision_reference || "Sin referencia"}
+                Decisión formal:{" "}
+                {a.decision_date ||
+                  (a.decision_date_unknown
+                    ? "Fecha original no informada (registro histórico)"
+                    : "Sin fecha")}{" "}
+                · {a.decision_reference || "Sin referencia"}
               </p>
             )}
             <p className="muted">
@@ -543,13 +549,15 @@ export default function CaseDetail({
             .map((ev) => (
               <article className="timeline" key={ev.id}>
                 <strong>
-                  {ev.action === "followup"
-                    ? "Seguimiento"
-                    : ev.action.includes("INSERT")
-                      ? "Carga de datos"
-                      : ev.action === "form_event"
-                        ? "Recepción de formulario"
-                        : "Modificación de datos"}
+                  {ev.action.startsWith("historical_")
+                    ? "Antecedente importado"
+                    : ev.action === "followup"
+                      ? "Seguimiento"
+                      : ev.action.includes("INSERT")
+                        ? "Carga de datos"
+                        : ev.action === "form_event"
+                          ? "Recepción de formulario"
+                          : "Modificación de datos"}
                 </strong>
                 <small>
                   {dateTime(ev.created_at)} ·{" "}

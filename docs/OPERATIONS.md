@@ -65,3 +65,7 @@ Aplicar `008_issuance.sql` después de 007. Los registros previos conservan camp
 Anular registro devuelve el caso a emisiones pendientes, no anula una póliza externa. Reabrir o rechazar un caso emitido requiere primero anular explícitamente el registro; no se borra silenciosamente la emisión. El acceso del inicio filtra solo pendientes y el filtro Aprobada muestra ambas situaciones. Estadísticas informa emitidas y pendientes dentro de la cohorte por ingreso.
 
 WordPress/Elementor Pro y WhatsApp Business con portfolio comercial confirmados; API pendiente. Ver ELEMENTOR-WHATSAPP.md para preparación sin modificar el sitio ni el número actual.
+
+## Antecedentes históricos (009)
+
+La migración 009 agrega indicadores explícitos de fecha de decisión y referencia de emisión desconocidas para registros históricos. Las altas habituales siguen exigiendo evidencia completa. Consultar [importación privada](HISTORICAL-IMPORT.md) para el procedimiento y controles de repetición, conciliación y permisos.

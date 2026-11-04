@@ -19,11 +19,15 @@ export function validateIssuance(
   if (
     profile.role !== "admin" &&
     (date !== (old?.issued_date || null) ||
-      reference !== (old?.issued_reference ?? null))
+      reference !== (old?.issued_reference ?? null) ||
+      Boolean(next.issued_reference_unknown) !==
+        Boolean(old?.issued_reference_unknown))
   )
     throw Error("Solo administración puede registrar o corregir una emisión.");
   if (
-    (date !== null) !== (reference !== null) ||
+    (date !== null) !==
+      (reference !== null || Boolean(next.issued_reference_unknown)) ||
+    (next.issued_reference_unknown && reference !== null) ||
     (reference !== null && (!reference.trim() || reference.length > 2000))
   )
     throw Error("Completá la fecha y referencia de emisión.");

@@ -8,6 +8,7 @@
     "start": "next start --hostname 0.0.0.0",
     "test": "tsx --test tests/*.test.ts",
     "typecheck": "tsc --noEmit",
+    "test:import": "python3 tests/test_historical_import.py",
     "test:db": "bash scripts/test-db.sh",
     "test:e2e": "playwright test",
     "simulate": "tsx scripts/send-event.ts"

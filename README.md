@@ -44,7 +44,7 @@ La migración 005 habilita estas funciones en Supabase. La demo se actualiza sin
 
 Ahora hay dos pipelines independientes: comercial (nuevo cliente, en contacto, finalizado) y garantía (sin contactar, documentación solicitada/recibida, preaprobación cargada, aprobada/rechazada). Las tarjetas abren una ficha lateral sin salir del tablero. Se ordenan por última modificación o ingreso; las alertas se basan en el último comentario y el día calendario de Uruguay (próximo al día siguiente, urgente desde el segundo), excluyendo garantías aprobadas/rechazadas y archivadas. Sin comentarios se usa el ingreso; editar datos no elimina la alerta.
 
-La ficha reúne datos del cliente, fecha de ingreso, fecha de solicitud, enlace de carpeta Drive y ambos estados. Documentos exclusivamente en Drive: el CRM solo guarda el enlace. Historial cronológico con valores anteriores/nuevos, responsables y seguimientos; datos sensibles mantienen sus permisos. Rechazo formal exige un motivo y respaldo; solo administración registra decisiones finales. Para Supabase se requieren las migraciones hasta 008; la demo migra los datos anteriores automáticamente.
+La ficha reúne datos del cliente, fecha de ingreso, fecha de solicitud, enlace de carpeta Drive y ambos estados. Documentos exclusivamente en Drive: el CRM solo guarda el enlace. Historial cronológico con valores anteriores/nuevos, responsables y seguimientos; datos sensibles mantienen sus permisos. Rechazo formal exige un motivo y respaldo; solo administración registra decisiones finales. Para Supabase se requieren las migraciones hasta 009; la demo migra los datos anteriores automáticamente.
 
 
 ## Inicio, comentarios, marketing y estadísticas
@@ -68,3 +68,5 @@ La migración `008_issuance.sql` agrega fecha/referencia de emisión con validac
 ## Acceso manual a WhatsApp
 
 El ícono junto al celular abre `https://api.whatsapp.com/send?phone=…` en una pestaña nueva, desde la carga, ficha y lista de clientes. Normaliza celulares uruguayos (por ejemplo, `099 000 001` → `59899000001`), elimina separadores y reconoce +598/00598. Otros países requieren prefijo internacional explícito. Si el formato está incompleto o no es reconocible, el acceso no se habilita. No cambia el número guardado, no comprueba que tenga cuenta de WhatsApp y no envía mensajes ni registra un seguimiento automáticamente: abrir un chat no demuestra que se haya enviado un mensaje. No requiere API ni credenciales de Meta.
+
+La migración 009 permite identificar explícitamente fechas de aprobación y referencias de emisión desconocidas en antecedentes históricos. Importación privada y prueba con datos ficticios: [procedimiento](docs/HISTORICAL-IMPORT.md).

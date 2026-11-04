@@ -85,6 +85,8 @@ export type Application = {
   issued_date?: string | null;
   issued_reference?: string | null;
   decision_date?: string | null;
+  decision_date_unknown?: boolean;
+  issued_reference_unknown?: boolean;
   decision_reference?: string | null;
   summary: string;
   archived: boolean;
