@@ -129,7 +129,7 @@ export default function CRM() {
     [originFilter, setOriginFilter] = useState("todos"),
     [typeFilter, setTypeFilter] = useState("todos"),
     [owner, setOwner] = useState("todos"),
-    [archived, setArchived] = useState(false),
+    [guaranteeFilter, setGuaranteeFilter] = useState("todos"),
     [sort, setSort] = useState("recent"),
     [pageNumber, setPageNumber] = useState(1),
     [modal, setModal] = useState<"lead" | "field" | null>(null),
@@ -212,7 +212,15 @@ export default function CRM() {
   }, [store, demo, ready]);
   useEffect(() => {
     setPageNumber(1);
-  }, [search, filter, completion, owner, archived, originFilter, typeFilter]);
+  }, [
+    search,
+    filter,
+    completion,
+    owner,
+    guaranteeFilter,
+    originFilter,
+    typeFilter,
+  ]);
   async function mutate(
     k: keyof Store,
     value: Record<string, unknown>,
@@ -369,7 +377,7 @@ export default function CRM() {
       !store.notes.some((n) => n.application_id === a.id),
   ).length;
   const list = allowed
-    .filter((a) => a.archived === archived)
+    .filter((a) => a.archived === (filter === "archivados"))
     .filter((a) =>
       `${a.full_name} ${a.phone} ${a.national_id || ""} ${formatCI(a.national_id)}`
         .toLowerCase()
@@ -378,11 +386,16 @@ export default function CRM() {
     .filter(
       (a) =>
         filter === "todos" ||
+        filter === "archivados" ||
         (filter === "sin_asignar"
           ? a.assigned_user_id === null
           : a.stage === filter),
     )
     .filter((a) => completion === "todos" || a.completion === completion)
+    .filter(
+      (a) =>
+        guaranteeFilter === "todos" || a.guarantee_stage === guaranteeFilter,
+    )
     .filter(
       (a) =>
         originFilter === "todos" || (a.source_id || "unknown") === originFilter,
@@ -394,6 +407,11 @@ export default function CRM() {
         ? a.full_name.localeCompare(b.full_name)
         : b.created_at.localeCompare(a.created_at),
     );
+  useEffect(() => {
+    setPageNumber((page) =>
+      Math.min(page, Math.max(1, Math.ceil(list.length / 8))),
+    );
+  }, [list.length]);
   const current = allowed.find((a) => a.id === selected);
   const isAdmin = profile?.role === "admin";
   const navigate = (p: string) => {
@@ -408,7 +426,7 @@ export default function CRM() {
     setOriginFilter("todos");
     setTypeFilter("todos");
     setOwner("todos");
-    setArchived(false);
+    setGuaranteeFilter("todos");
   };
   async function addLead(e: FormEvent<HTMLFormElement>) {
     e.preventDefault();
@@ -507,6 +525,7 @@ export default function CRM() {
             return (
               <button
                 key={String(name)}
+                aria-label={String(name)}
                 className={page === name ? "active" : ""}
                 onClick={() => navigate(String(name))}
               >
@@ -784,10 +803,16 @@ export default function CRM() {
                   <div className="section-heading">
                     <div>
                       <h2>
-                        Todas las solicitudes{" "}
+                        {filter === "archivados"
+                          ? "Clientes archivados"
+                          : "Todas las solicitudes"}{" "}
                         <span className="count">{list.length}</span>
                       </h2>
-                      <p>Nuevas, en proceso y finalizadas.</p>
+                      <p>
+                        {filter === "archivados"
+                          ? "Consultá sus fichas o restauralos para volver a gestionarlos."
+                          : "Nuevas, en proceso y finalizadas."}
+                      </p>
                     </div>
                   </div>
                   <div className="table-tools">
@@ -798,6 +823,7 @@ export default function CRM() {
                         ["en_contacto", "En contacto"],
                         ["finalizado", "Finalizados"],
                         ...(isAdmin ? [["sin_asignar", "Sin asignar"]] : []),
+                        ["archivados", "Archivados"],
                       ].map(([v, l]) => (
                         <button
                           key={v}
@@ -903,13 +929,16 @@ export default function CRM() {
                           <option value="name">Nombre A–Z</option>
                         </select>
                       </label>
-                      <label className="checkbox">
-                        <input
-                          type="checkbox"
-                          checked={archived}
-                          onChange={(e) => setArchived(e.target.checked)}
-                        />
-                        Archivadas
+                      <label>
+                        Resultado de garantía
+                        <select
+                          value={guaranteeFilter}
+                          onChange={(e) => setGuaranteeFilter(e.target.value)}
+                        >
+                          <option value="todos">Todos los resultados</option>
+                          <option value="aprobada">Aprobados</option>
+                          <option value="rechazada">Rechazados</option>
+                        </select>
                       </label>
                     </div>
                   )}
@@ -1001,7 +1030,24 @@ export default function CRM() {
                                 )}
                               </td>
                               <td>
-                                <ChevronRight size={17} />
+                                {a.archived && isAdmin ? (
+                                  <button
+                                    className="secondary"
+                                    disabled={busy}
+                                    aria-label={`Restaurar a ${a.full_name}`}
+                                    onClick={(e) => {
+                                      e.stopPropagation();
+                                      mutate("applications", {
+                                        id: a.id,
+                                        archived: false,
+                                      });
+                                    }}
+                                  >
+                                    Restaurar
+                                  </button>
+                                ) : (
+                                  <ChevronRight size={17} />
+                                )}
                               </td>
                             </tr>
                           ))}
@@ -1061,20 +1107,7 @@ export default function CRM() {
                           )}
                         </small>
                       </div>
-                      <label className="checkbox">
-                        <input
-                          type="checkbox"
-                          disabled={p.role === "admin" || busy}
-                          checked={p.can_clearing}
-                          onChange={(e) =>
-                            mutate("profiles", {
-                              id: p.id,
-                              can_clearing: e.target.checked,
-                            })
-                          }
-                        />
-                        Permiso de Clearing
-                      </label>
+
                       <button
                         className="secondary"
                         disabled={p.id === profile.id || busy}

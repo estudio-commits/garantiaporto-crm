@@ -50,8 +50,8 @@ test("follow-up uses Uruguay calendar dates and last comment, never edits", () =
       [],
       Date.parse("2026-11-05T12:00:00Z"),
     ),
-    "urgente",
-  ); // independent commercial axis
+    null,
+  ); // Finalized commercial cases no longer need follow-up
 });
 test("identity supports both lengths without inventing or truncating digits", () => {
   for (const ci of [

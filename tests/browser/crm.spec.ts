@@ -342,11 +342,9 @@ test("issuance leaves approval unchanged, updates pending count and retains hist
   await confirm.getByRole("button", { name: "Confirmar decisión" }).click();
   await page.getByRole("button", { name: "Cerrar vista previa" }).click();
   await nav(page, "Inicio").click();
-  const summary = page
-    .locator(".home-shortcut")
-    .filter({
-      has: page.getByRole("heading", { name: "Emisiones pendientes" }),
-    });
+  const summary = page.locator(".home-shortcut").filter({
+    has: page.getByRole("heading", { name: "Emisiones pendientes" }),
+  });
   await expect(summary.locator(".shortcut-count")).toHaveText("1");
   await page.getByRole("button", { name: "Ir a emisiones" }).click();
   await expect(page.getByRole("article", { name: /^Solicitud / })).toHaveCount(
@@ -403,4 +401,67 @@ test("issuance leaves approval unchanged, updates pending count and retains hist
   await page.getByRole("button", { name: "Cerrar vista previa" }).click();
   await nav(page, "Inicio").click();
   await expect(summary.locator(".shortcut-count")).toHaveText("1");
+});
+
+test("archived clients can be filtered and restored; finalized clients need no follow-up", async ({
+  page,
+}) => {
+  await page.goto("/");
+  await page.waitForFunction(
+    () => localStorage.getItem("porto-demo-v1") !== null,
+  );
+  await page.evaluate(() => {
+    const s = JSON.parse(localStorage.getItem("porto-demo-v1")!);
+    s.applications[0].archived = true;
+    s.applications[0].guarantee_stage = "aprobada";
+    s.applications[0].decision = "aprobada";
+    s.applications[1].archived = true;
+    s.applications[1].guarantee_stage = "rechazada";
+    s.applications[1].decision = "rechazada";
+    s.applications[2].stage = "finalizado";
+    s.applications[2].guarantee_stage = "sin_contactar";
+    s.applications[2].created_at = "2020-01-01T12:00:00Z";
+    localStorage.setItem("porto-demo-v1", JSON.stringify(s));
+  });
+  await page.reload();
+  await nav(page, "Lista de clientes").click();
+  await expect(
+    page
+      .locator("tbody")
+      .getByRole("button", { name: "Lucía Ejemplo", exact: true }),
+  ).toHaveCount(0);
+  await page.getByRole("button", { name: "Archivados", exact: true }).click();
+  await expect(page.locator("tbody tr")).toHaveCount(2);
+  await page.getByRole("button", { name: "Filtros", exact: true }).click();
+  await page.getByLabel("Resultado de garantía").selectOption("aprobada");
+  await expect(page.locator("tbody tr")).toHaveCount(1);
+  await expect(page.locator("tbody tr")).toContainText("Lucía Ejemplo");
+  await page.getByLabel("Resultado de garantía").selectOption("rechazada");
+  await expect(page.locator("tbody tr")).toHaveCount(1);
+  await expect(page.locator("tbody tr")).not.toContainText("Lucía Ejemplo");
+  await page.getByLabel("Resultado de garantía").selectOption("aprobada");
+  await page
+    .getByRole("button", { name: "Restaurar a Lucía Ejemplo", exact: true })
+    .click();
+  await expect(page.locator("tbody tr")).toHaveCount(0);
+  await page.getByRole("button", { name: "Todas", exact: true }).click();
+  await expect(
+    page
+      .locator("tbody")
+      .getByRole("button", { name: "Lucía Ejemplo", exact: true }),
+  ).toBeVisible();
+  await nav(page, "Equipo").click();
+  await expect(
+    page.getByText("Permiso de Clearing", { exact: true }),
+  ).toHaveCount(0);
+  await pipeline(page);
+  const finalized = page.getByRole("region", {
+    name: "Etapa Finalizado",
+    exact: true,
+  });
+  await expect(finalized.locator(".followup-chip")).toHaveCount(0);
+  await page.reload();
+  await nav(page, "Lista de clientes").click();
+  await page.getByRole("button", { name: "Archivados", exact: true }).click();
+  await expect(page.locator("tbody tr")).toHaveCount(1);
 });

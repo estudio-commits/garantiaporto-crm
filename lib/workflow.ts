@@ -78,7 +78,8 @@ export function followUp(
   notes: Note[],
   now = Date.now(),
 ): "próximo" | "urgente" | null {
-  if (a.archived || terminal(a.guarantee_stage)) return null;
+  if (a.archived || a.stage === "finalizado" || terminal(a.guarantee_stage))
+    return null;
   const last = notes
     .filter((n) => n.application_id === a.id)
     .reduce(
