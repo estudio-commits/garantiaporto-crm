@@ -9,6 +9,10 @@ import {
   normalizeCI,
   formatCI,
   dateOnly,
+  todayUy,
+  scheduledFollowUpDue,
+  compareScheduledFollowUp,
+  normalizeScheduledFollowUp,
   validDriveFolder,
   migrateApplication,
 } from "../lib/workflow";
@@ -252,4 +256,71 @@ test("historical issuance can be edited by its seller without inventing a policy
 test("card dates preserve calendar dates and convert timestamps to Uruguay without time", () => {
   assert.equal(dateOnly("2026-11-03"), "03/11/2026");
   assert.equal(dateOnly("2026-11-04T01:00:00Z"), "03/11/2026");
+});
+
+test("scheduled follow-up uses Uruguay dates, outranks recency and excludes terminal cases", () => {
+  const a = {
+    ...seed().applications[0],
+    stage: "finalizado",
+    guarantee_stage: "sin_contactar",
+    follow_up_date: "2026-11-06",
+  };
+  assert.equal(
+    scheduledFollowUpDue(a, Date.parse("2026-11-06T02:59:59Z")),
+    false,
+  );
+  assert.equal(
+    scheduledFollowUpDue(a, Date.parse("2026-11-06T03:00:00Z")),
+    true,
+  );
+  assert.equal(followUp(a, [], Date.parse("2026-11-06T03:00:00Z")), "próximo");
+  assert.equal(followUp(a, [], Date.parse("2026-11-07T03:00:00Z")), "urgente");
+  const fresh = {
+    ...a,
+    follow_up_date: null,
+    updated_at: "2026-11-07T10:00:00Z",
+  };
+  assert.equal(
+    compareScheduledFollowUp(a, fresh, Date.parse("2026-11-07T12:00:00Z")),
+    -1,
+  );
+  for (const patch of [
+    { archived: true },
+    { guarantee_stage: "aprobada" },
+    { guarantee_stage: "rechazada" },
+    { follow_up_date: null },
+  ])
+    assert.equal(
+      followUp({ ...a, ...patch }, [], Date.parse("2026-11-07T12:00:00Z")),
+      null,
+    );
+});
+test("finalizing pending guarantees requires a date; resuming or deciding clears it", () => {
+  const old = {
+    ...seed().applications[0],
+    stage: "en_contacto",
+    guarantee_stage: "sin_contactar",
+  };
+  assert.throws(
+    () => normalizeScheduledFollowUp({ ...old, stage: "finalizado" }, old),
+    /fecha/,
+  );
+  assert.throws(
+    () =>
+      normalizeScheduledFollowUp(
+        { ...old, stage: "finalizado", follow_up_date: "2000-01-01" },
+        old,
+      ),
+    /fecha/,
+  );
+  const next = { ...old, stage: "finalizado", follow_up_date: todayUy() };
+  normalizeScheduledFollowUp(next, old);
+  const reopened = { ...next, stage: "en_contacto" };
+  normalizeScheduledFollowUp(reopened, next);
+  assert.equal(reopened.follow_up_date, null);
+  for (const guarantee_stage of ["aprobada", "rechazada"]) {
+    const terminal = { ...next, guarantee_stage };
+    normalizeScheduledFollowUp(terminal, next);
+    assert.equal(terminal.follow_up_date, null);
+  }
 });

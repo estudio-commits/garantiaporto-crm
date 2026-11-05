@@ -19,6 +19,7 @@ import {
   dateTime,
   validDriveFolder,
   terminal,
+  todayUy,
 } from "@/lib/workflow";
 import Issuance from "./issuance";
 import Marketing from "./marketing";
@@ -68,6 +69,7 @@ export default function CaseDetail({
         stage: "Estado comercial",
         guarantee_stage: "Proceso de la garantía",
         requested_date: "Fecha de solicitud",
+        follow_up_date: "Fecha de seguimiento",
         issued_date: "Fecha de emisión",
         issued_reference: "Referencia de emisión",
         issued_reference_unknown: "Referencia de emisión pendiente",
@@ -501,6 +503,46 @@ export default function CaseDetail({
               Los dos procesos son independientes. Solo administración confirma
               aprobación o rechazo formal.
             </p>
+            {a.stage === "finalizado" && !terminal(a.guarantee_stage) && (
+              <form
+                key={a.follow_up_date || "unscheduled"}
+                onSubmit={(e) => {
+                  e.preventDefault();
+                  mutate("applications", {
+                    id: a.id,
+                    follow_up_date: String(
+                      new FormData(e.currentTarget).get("follow_up_date"),
+                    ),
+                  });
+                }}
+              >
+                <label>
+                  Fecha de seguimiento
+                  <input
+                    type="date"
+                    name="follow_up_date"
+                    min={todayUy()}
+                    defaultValue={a.follow_up_date || ""}
+                    required
+                  />
+                </label>
+                <button className="secondary" disabled={busy}>
+                  Guardar seguimiento
+                </button>
+                {a.follow_up_date && (
+                  <button
+                    type="button"
+                    className="secondary"
+                    disabled={busy}
+                    onClick={() =>
+                      mutate("applications", { id: a.id, follow_up_date: null })
+                    }
+                  >
+                    Marcar seguimiento realizado
+                  </button>
+                )}
+              </form>
+            )}
             {admin && (
               <button
                 className="secondary"

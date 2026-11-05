@@ -117,6 +117,7 @@ export default function CRM() {
     [commentTarget, setCommentTarget] = useState<string | null>(null),
     [selected, setSelected] = useState<string | null>(null),
     [preview, setPreview] = useState<string | null>(null),
+    [followUpTarget, setFollowUpTarget] = useState<string | null>(null),
     [decisionTarget, setDecisionTarget] = useState<{
       id: string;
       stage: string;
@@ -227,6 +228,22 @@ export default function CRM() {
     mode: "insert" | "update" | "upsert" = "update",
     match = "id",
   ) {
+    const application =
+      k === "applications"
+        ? store.applications.find((a) => a.id === value.id)
+        : undefined;
+    if (
+      application &&
+      mode === "update" &&
+      value.stage === "finalizado" &&
+      application.stage !== "finalizado" &&
+      !terminal(String(value.guarantee_stage ?? application.guarantee_stage)) &&
+      !value.follow_up_date
+    ) {
+      setMessage("");
+      setFollowUpTarget(application.id);
+      return false;
+    }
     setBusy(true);
     setMessage("");
     try {
@@ -418,6 +435,7 @@ export default function CRM() {
     setPage(p);
     setPipelineStage("all");
     setCommentTarget(null);
+    setFollowUpTarget(null);
     setSelected(null);
     setPreview(null);
     setFilter("todos");
@@ -1267,6 +1285,50 @@ export default function CRM() {
             }}
           />
           {message && <p role="alert">{message}</p>}
+        </Dialog>
+      )}
+      {followUpTarget && allowed.some((a) => a.id === followUpTarget) && (
+        <Dialog
+          title="Programar seguimiento"
+          close={() => {
+            if (!busy) setFollowUpTarget(null);
+          }}
+        >
+          <p>{allowed.find((a) => a.id === followUpTarget)?.full_name}</p>
+          <p>
+            La garantía sigue pendiente. Elegí cuándo retomar el contacto antes
+            de finalizar.
+          </p>
+          <form
+            onSubmit={async (e) => {
+              e.preventDefault();
+              const date = String(
+                new FormData(e.currentTarget).get("follow_up_date") || "",
+              );
+              if (
+                await mutate("applications", {
+                  id: followUpTarget,
+                  stage: "finalizado",
+                  follow_up_date: date,
+                })
+              )
+                setFollowUpTarget(null);
+            }}
+          >
+            <label>
+              Fecha de seguimiento
+              <input
+                name="follow_up_date"
+                type="date"
+                min={todayUy()}
+                required
+              />
+            </label>
+            {message && <p role="alert">{message}</p>}
+            <button className="primary" disabled={busy}>
+              Finalizar y programar
+            </button>
+          </form>
         </Dialog>
       )}
       {decisionTarget && (

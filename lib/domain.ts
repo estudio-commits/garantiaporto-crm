@@ -78,6 +78,7 @@ export type Application = {
   stage: string;
   guarantee_stage?: string;
   requested_date?: string | null;
+  follow_up_date?: string | null;
   drive_folder_url?: string | null;
   preapproval: string;
   documentation: string;

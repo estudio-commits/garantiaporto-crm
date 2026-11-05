@@ -9,6 +9,14 @@ do $$begin
  if (select count(*) from applications)<>1 then raise exception 'RLS leak';end if;
  if exists(select 1 from application_sensitive) then raise exception 'Sensitive leak';end if;
  update applications set stage='en_contacto' where id='10000000-0000-4000-8000-000000000001';
+ begin update applications set stage='finalizado' where id='10000000-0000-4000-8000-000000000001';raise exception 'Missing followup accepted';exception when raise_exception then if sqlerrm='Missing followup accepted' then raise;end if;end;
+ begin update applications set stage='finalizado',follow_up_date='2000-01-01' where id='10000000-0000-4000-8000-000000000001';raise exception 'Past followup accepted';exception when raise_exception then if sqlerrm='Past followup accepted' then raise;end if;end;
+ update applications set stage='finalizado',follow_up_date=(now() at time zone 'America/Montevideo')::date where id='10000000-0000-4000-8000-000000000001';
+ if not exists(select 1 from audit_log where application_id='10000000-0000-4000-8000-000000000001' and changes ? 'follow_up_date') then raise exception 'Schedule not audited';end if;
+ update applications set follow_up_date=current_date+1 where id='10000000-0000-4000-8000-000000000002';if found then raise exception 'Other seller schedule editable';end if;
+ update applications set stage='en_contacto' where id='10000000-0000-4000-8000-000000000001';
+ if exists(select 1 from applications where id='10000000-0000-4000-8000-000000000001' and follow_up_date is not null) then raise exception 'Reopening did not clear schedule';end if;
+
  update applications set guarantee_stage='preaprobacion_cargada',source_id='40000000-0000-4000-8000-000000000002' where id='10000000-0000-4000-8000-000000000001';
  if (select decision from applications where id='10000000-0000-4000-8000-000000000001')<>'no_presentada' then raise exception 'Pipeline altered formal decision';end if;
  if (select count(*) from client_sources)<>2 then raise exception 'Seller cannot read origins';end if;
@@ -47,7 +55,7 @@ do $$declare n integer;begin
 end $$;
 update client_sources set archived=true where id='40000000-0000-4000-8000-000000000002';
 do $$begin
- update applications set stage='finalizado' where id='10000000-0000-4000-8000-000000000001';
+ update applications set stage='finalizado',follow_up_date=(now() at time zone 'America/Montevideo')::date where id='10000000-0000-4000-8000-000000000001';
  begin update applications set source_id='40000000-0000-4000-8000-000000000002' where id='10000000-0000-4000-8000-000000000002';raise exception 'Archived origin accepted';exception when raise_exception then if sqlerrm='Archived origin accepted' then raise;end if;end;
  if not exists(select 1 from audit_log where changes->'source_id'->>'after'='40000000-0000-4000-8000-000000000002') then raise exception 'Source change unaudited';end if;
 end $$;
@@ -57,6 +65,7 @@ set local role authenticated;
 do $$declare prev timestamptz;cnt bigint;begin
  begin perform set_guarantee_decision('10000000-0000-4000-8000-000000000001','rechazada',null,current_date,'Referencia ficticia');raise exception 'Missing reason accepted';exception when raise_exception then if sqlerrm='Missing reason accepted' then raise;end if;end;
  perform set_guarantee_decision('10000000-0000-4000-8000-000000000001','rechazada','clearing',current_date,'Referencia ficticia');
+ if exists(select 1 from applications where id='10000000-0000-4000-8000-000000000001' and follow_up_date is not null) then raise exception 'Rejected retains followup';end if;
  if not exists(select 1 from applications where id='10000000-0000-4000-8000-000000000001' and guarantee_stage='rechazada' and stage='finalizado') then raise exception 'Guarantee decision modified commercial axis';end if;
  if not exists(select 1 from application_sensitive where application_id='10000000-0000-4000-8000-000000000001' and rejection_reason='clearing') then raise exception 'Reason missing';end if;
  select updated_at into prev from applications where id='10000000-0000-4000-8000-000000000001';select count(*) into cnt from audit_log;

@@ -465,3 +465,70 @@ test("archived clients can be filtered and restored; finalized clients need no f
   await page.getByRole("button", { name: "Archivados", exact: true }).click();
   await expect(page.locator("tbody tr")).toHaveCount(1);
 });
+
+test("finalizing a pending guarantee schedules follow-up and due cards rise above recent ones", async ({
+  page,
+}) => {
+  await page.goto("/");
+  await pipeline(page);
+  const card = page.getByRole("article", {
+    name: "Solicitud Lucía Ejemplo",
+    exact: true,
+  });
+  const column = page.getByRole("region", {
+    name: "Etapa Finalizado",
+    exact: true,
+  });
+  const drag = () =>
+    card.dragTo(column, {
+      sourcePosition: { x: 220, y: 20 },
+      targetPosition: { x: 100, y: 20 },
+    });
+  await drag();
+  const dialog = page.getByRole("dialog", { name: "Programar seguimiento" });
+  await expect(dialog).toBeVisible();
+  await expect(dialog.getByLabel("Fecha de seguimiento")).toHaveValue("");
+  await dialog.getByRole("button", { name: "Cerrar vista previa" }).click();
+  await expect(
+    page
+      .getByRole("region", { name: "Etapa Nuevo cliente", exact: true })
+      .getByRole("article", { name: "Solicitud Lucía Ejemplo", exact: true }),
+  ).toBeVisible();
+  await drag();
+  const today = new Intl.DateTimeFormat("en-CA", {
+    timeZone: "America/Montevideo",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  }).format(new Date());
+  await dialog.getByLabel("Fecha de seguimiento").fill(today);
+  await dialog.getByRole("button", { name: "Finalizar y programar" }).click();
+  await expect(dialog).toHaveCount(0);
+  await expect(column.getByRole("article").first()).toContainText(
+    "Lucía Ejemplo",
+  );
+  await expect(card).toContainText("Seguimiento hoy");
+  await page.evaluate(() => {
+    const s = JSON.parse(localStorage.getItem("porto-demo-v1")!);
+    s.applications[0].updated_at = "2000-01-01T12:00:00Z";
+    s.applications[1].stage = "finalizado";
+    s.applications[1].updated_at = new Date().toISOString();
+    localStorage.setItem("porto-demo-v1", JSON.stringify(s));
+  });
+  await page.reload();
+  await pipeline(page);
+  await expect(column.getByRole("article").first()).toContainText(
+    "Lucía Ejemplo",
+  );
+  await client(page).click();
+  const preview = page.getByRole("dialog", {
+    name: "Vista previa del cliente",
+  });
+  await expect(preview.getByLabel("Fecha de seguimiento")).toHaveValue(today);
+  await preview
+    .getByRole("button", { name: "Marcar seguimiento realizado" })
+    .click();
+  await expect(preview.getByLabel("Fecha de seguimiento")).toHaveValue("");
+  await preview.getByRole("button", { name: "Cerrar vista previa" }).click();
+  await expect(card.locator(".followup-chip")).toHaveCount(0);
+});

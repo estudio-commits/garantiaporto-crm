@@ -73,11 +73,57 @@ export const uyDay = (value: string | number) =>
     month: "2-digit",
     day: "2-digit",
   }).format(new Date(value));
+export const hasScheduledFollowUp = (a: Application) =>
+  !a.archived &&
+  a.stage === "finalizado" &&
+  !terminal(a.guarantee_stage) &&
+  Boolean(a.follow_up_date);
+export const scheduledFollowUpDue = (a: Application, now = Date.now()) =>
+  hasScheduledFollowUp(a) && a.follow_up_date! <= uyDay(now);
+export function compareScheduledFollowUp(
+  a: Application,
+  b: Application,
+  now: number,
+) {
+  const left = scheduledFollowUpDue(a, now),
+    right = scheduledFollowUpDue(b, now);
+  if (left !== right) return left ? -1 : 1;
+  return left && right ? a.follow_up_date!.localeCompare(b.follow_up_date!) : 0;
+}
+export function normalizeScheduledFollowUp(
+  next: Application,
+  old?: Application,
+) {
+  if (next.stage !== "finalizado" || terminal(next.guarantee_stage)) {
+    next.follow_up_date = null;
+    return;
+  }
+  const entering = old?.stage !== "finalizado";
+  if (entering && !next.follow_up_date)
+    throw Error(
+      "Elegí una fecha de seguimiento para finalizar con garantía pendiente.",
+    );
+  if (
+    next.follow_up_date &&
+    (entering || next.follow_up_date !== old?.follow_up_date)
+  ) {
+    const date = next.follow_up_date;
+    if (
+      !/^\d{4}-\d{2}-\d{2}$/.test(date) ||
+      !Number.isFinite(Date.parse(date)) ||
+      new Date(date).toISOString().slice(0, 10) !== date ||
+      date < todayUy()
+    )
+      throw Error("La fecha de seguimiento debe ser hoy o posterior.");
+  }
+}
 export function followUp(
   a: Application,
   notes: Note[],
   now = Date.now(),
 ): "próximo" | "urgente" | null {
+  if (scheduledFollowUpDue(a, now))
+    return a.follow_up_date! < uyDay(now) ? "urgente" : "próximo";
   if (a.archived || a.stage === "finalizado" || terminal(a.guarantee_stage))
     return null;
   const last = notes
@@ -175,6 +221,11 @@ export function demoMutation(
     r[match] === v[match] && (k !== "values" || r.field_id === v.field_id);
   const old = rows.find(matches);
   const next = { ...old, ...v };
+  if (k === "applications")
+    normalizeScheduledFollowUp(
+      next as Application,
+      old as Application | undefined,
+    );
   const delta = changed(old || {}, next);
   if (old && !Object.keys(delta).length) return s;
   const now = new Date().toISOString();

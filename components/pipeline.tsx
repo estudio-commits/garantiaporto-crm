@@ -2,7 +2,13 @@
 import { useRef, useState } from "react";
 import { Search, GripVertical, Plus } from "lucide-react";
 import { Application, Store, states, human } from "@/lib/domain";
-import { formatCI, dateOnly, terminal, pendingIssuance } from "@/lib/workflow";
+import {
+  formatCI,
+  dateOnly,
+  terminal,
+  pendingIssuance,
+  compareScheduledFollowUp,
+} from "@/lib/workflow";
 import { sourceName } from "@/lib/sources";
 import FollowUp from "./follow-up";
 export default function Pipeline({
@@ -67,7 +73,9 @@ export default function Pipeline({
     setOver(null);
     // Formal decisions still wait for their evidence dialog before changing columns.
     const previewMove =
-      kind === "commercial" || (!terminal(stage) && !a.issued_date);
+      (kind === "commercial" &&
+        !(stage === "finalizado" && !terminal(a.guarantee_stage))) ||
+      (kind === "guarantee" && !terminal(stage) && !a.issued_date);
     if (previewMove) {
       setPending({
         ...a,
@@ -171,6 +179,7 @@ export default function Pipeline({
             .filter((a) => a[field] === stage)
             .sort(
               (a, b) =>
+                compareScheduledFollowUp(a, b, now) ||
                 (order === "created_at"
                   ? (b.requested_date || b.created_at).slice(0, 10)
                   : b.updated_at
