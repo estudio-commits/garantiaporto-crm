@@ -80,3 +80,7 @@ Aplicar `010_scheduled_followup.sql` después de 009 en SQL Editor. Agrega follo
 Arrastrar o seleccionar Finalizado abre una ventana para elegir la fecha; cancelar conserva el estado. Las garantías aprobadas/rechazadas no solicitan fecha. Reabrir comercialmente o aprobar/rechazar la garantía limpia el seguimiento. Archivar oculta su aviso y prioridad, conservando la fecha para una eventual restauración. Cambiar datos o agregar un comentario no cancela la cita; se debe reprogramar o usar Marcar seguimiento realizado en la ficha. Todo cambio queda auditado.
 
 Desde el día indicado, el cliente sube al principio de su columna en ambos pipelines, sin cambiar de etapa. Los vencidos más antiguos tienen prioridad; los demás mantienen el orden elegido. El aviso distingue programado, hoy y vencido; se recalcula cada minuto con el CRM abierto. No usa cron, no altera fechas de actividad por el paso del tiempo y no envía mensajes externos.
+
+## Integración Supabase ↔ GitHub
+
+La integración de Supabase con GitHub aplica automáticamente las migraciones de `supabase/migrations` que no figuren en `supabase_migrations.schema_migrations`. Las migraciones 001 a 010 se aplicaron manualmente desde el SQL Editor y luego se registraron en esa tabla (con RLS habilitado), para que la integración no intente recrearlas. Toda migración nueva debe agregarse como archivo numerado siguiente (`011_…sql`) y no ejecutarse a mano, o bien registrarse en esa tabla si se aplica manualmente.
