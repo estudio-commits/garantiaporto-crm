@@ -23,6 +23,7 @@ Este documento es la referencia del proyecto de WhatsApp. Complementa el diseño
    - no sabe la respuesta.
 
    No decide aprobaciones ni ve ingresos ni datos de Clearing.
+
 6. **Convivencia bot–persona.** Si alguien del equipo escribe en esa conversación (desde el celular o el CRM), el bot se pausa en ella. Se puede reactivar desde la ficha. También existe un **interruptor general** para apagar el bot.
 
 ## Arquitectura
@@ -58,6 +59,7 @@ flowchart LR
 ### 0.1 Verificar la empresa en Meta
 
 En [Meta Business Suite](https://business.facebook.com/) → Configuración → Centro de seguridad → **Verificación de la empresa**. Necesitás:
+
 - razón social y RUT;
 - dirección;
 - un documento que los respalde;
@@ -69,14 +71,15 @@ Tarda entre unos días y dos semanas.
 
 Según la información disponible (noviembre de 2026), Meta habilita la coexistencia mediante un flujo de alta ("Embedded Signup") que ofrecen los **proveedores oficiales**. Para una empresa que conecta su propio número, el camino práctico es un proveedor:
 
-| Camino | Costo fijo | Tiempo | Comentario |
-|---|---|---|---|
-| **Proveedor oficial con API compatible (recomendado)**, p. ej. 360dialog | ~€49/mes por número + mensajes de Meta, sin recargo | Días | El CRM habla con la API del proveedor, que tiene el mismo formato que la de Meta. El proveedor solo transporta mensajes, no reemplaza al CRM |
-| Registrar una app propia como "Tech Provider" de Meta | US$ 0 + mensajes de Meta | Semanas, con revisión de Meta y resultado incierto | Más trámite. Se puede migrar más adelante |
+| Camino                                                                   | Costo fijo                                          | Tiempo                                             | Comentario                                                                                                                                   |
+| ------------------------------------------------------------------------ | --------------------------------------------------- | -------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------- |
+| **Proveedor oficial con API compatible (recomendado)**, p. ej. 360dialog | ~€49/mes por número + mensajes de Meta, sin recargo | Días                                               | El CRM habla con la API del proveedor, que tiene el mismo formato que la de Meta. El proveedor solo transporta mensajes, no reemplaza al CRM |
+| Registrar una app propia como "Tech Provider" de Meta                    | US$ 0 + mensajes de Meta                            | Semanas, con revisión de Meta y resultado incierto | Más trámite. Se puede migrar más adelante                                                                                                    |
 
 **Recomendación:** empezar con el proveedor. Antes de contratar, confirmar con su soporte que admite coexistencia para un número de Uruguay y que ofrece webhook con cabecera secreta.
 
 **Requisitos del número para coexistencia:**
+
 - usarlo activamente en la app WhatsApp Business al menos 7 días antes;
 - tener la app actualizada (versión 2.24.17 o superior);
 - que el número no esté conectado a otra API.
@@ -101,39 +104,39 @@ Meta decide la categoría final. Si la clasifica como marketing, el costo por me
 
 ### 0.5 Variables a cargar en Vercel (no compartirlas por chat)
 
-| Variable | Qué es |
-|---|---|
-| `WHATSAPP_API_BASE_URL` | `https://graph.facebook.com/v23.0` (Meta directo) o la URL del proveedor |
-| `WHATSAPP_API_TOKEN` | Token de acceso del sistema o API key del proveedor |
-| `WHATSAPP_PHONE_NUMBER_ID` | ID del número (Meta directo; con proveedor puede no aplicar) |
-| `WHATSAPP_WEBHOOK_SECRET` | Secreto para validar los webhooks: el app secret de Meta, o una cabecera secreta del proveedor |
-| `WHATSAPP_VERIFY_TOKEN` | Token de verificación del webhook (solo Meta directo) |
-| `WHATSAPP_ENABLED` | `false` hasta terminar las pruebas |
-| `CRON_SECRET` | Protege la tarea programada de envíos |
-| `GOOGLE_DRIVE_*` | Etapa 2 |
-| `ANTHROPIC_API_KEY` | Etapa 3 |
+| Variable                   | Qué es                                                                                         |
+| -------------------------- | ---------------------------------------------------------------------------------------------- |
+| `WHATSAPP_API_BASE_URL`    | `https://graph.facebook.com/v23.0` (Meta directo) o la URL del proveedor                       |
+| `WHATSAPP_API_TOKEN`       | Token de acceso del sistema o API key del proveedor                                            |
+| `WHATSAPP_PHONE_NUMBER_ID` | ID del número (Meta directo; con proveedor puede no aplicar)                                   |
+| `WHATSAPP_WEBHOOK_SECRET`  | Secreto para validar los webhooks: el app secret de Meta, o una cabecera secreta del proveedor |
+| `WHATSAPP_VERIFY_TOKEN`    | Token de verificación del webhook (solo Meta directo)                                          |
+| `WHATSAPP_ENABLED`         | `false` hasta terminar las pruebas                                                             |
+| `CRON_SECRET`              | Protege la tarea programada de envíos                                                          |
+| `GOOGLE_DRIVE_*`           | Etapa 2                                                                                        |
+| `ANTHROPIC_API_KEY`        | Etapa 3                                                                                        |
 
 ## Etapas de desarrollo
 
-| Etapa | Contenido | Estado |
-|---|---|---|
-| Prerrequisito | Corrección de la auditoría de seguridad (migración 011) | PR abierto |
-| 0 | Trámites de Meta y del proveedor, consentimiento, plantilla | A cargo de Garantía Porto |
-| 1 | Base de datos, webhook, envío con cola y reintentos, saludo automático, casos desde WhatsApp, pestaña WhatsApp en la ficha, pausa del bot por intervención humana, demo | En desarrollo |
-| 2 | Documentos → Google Drive (creación de carpeta, validación de tipo y tamaño) | Pendiente |
-| 3 | Asistente con IA, base de respuestas y documentos por garantía editable, derivación, piloto con pocos casos | Pendiente |
+| Etapa         | Contenido                                                                                                                                                               | Estado                    |
+| ------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------- |
+| Prerrequisito | Corrección de la auditoría de seguridad (migración 011)                                                                                                                 | PR abierto                |
+| 0             | Trámites de Meta y del proveedor, consentimiento, plantilla                                                                                                             | A cargo de Garantía Porto |
+| 1             | Base de datos, webhook, envío con cola y reintentos, saludo automático, casos desde WhatsApp, pestaña WhatsApp en la ficha, pausa del bot por intervención humana, demo | En desarrollo             |
+| 2             | Documentos → Google Drive (creación de carpeta, validación de tipo y tamaño)                                                                                            | Pendiente                 |
+| 3             | Asistente con IA, base de respuestas y documentos por garantía editable, derivación, piloto con pocos casos                                                             | Pendiente                 |
 
 Todo se desarrolla y prueba primero sin conexión real, con datos ficticios. La activación con el número real se hace con `WHATSAPP_ENABLED=true` después de una prueba con tu propio celular.
 
 ## Costos estimados (100–200 conversaciones/mes)
 
-| Concepto | Costo mensual aproximado |
-|---|---|
-| Proveedor para coexistencia | ~€49 (≈ US$ 55) |
-| Mensajes de Meta (saludos + respuestas; 1.000 respuestas/mes gratis) | US$ 3–20 |
-| IA (etapa 3) | US$ 5–30 |
-| Vercel Pro y Supabase Pro (si todavía no se pagan) | ~US$ 45 |
-| Google Drive API | sin costo adicional |
+| Concepto                                                             | Costo mensual aproximado |
+| -------------------------------------------------------------------- | ------------------------ |
+| Proveedor para coexistencia                                          | ~€49 (≈ US$ 55)          |
+| Mensajes de Meta (saludos + respuestas; 1.000 respuestas/mes gratis) | US$ 3–20                 |
+| IA (etapa 3)                                                         | US$ 5–30                 |
+| Vercel Pro y Supabase Pro (si todavía no se pagan)                   | ~US$ 45                  |
+| Google Drive API                                                     | sin costo adicional      |
 
 Las tarifas de Meta cambian cada trimestre: verificarlas en WhatsApp Manager al conectar.
 
