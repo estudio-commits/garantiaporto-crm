@@ -4,144 +4,177 @@ Este documento es la referencia del proyecto de WhatsApp. Complementa el diseño
 
 ## Decisiones tomadas (7/11/2026)
 
-- **Opción A: desarrollo a medida dentro del CRM**, conectado a la API oficial de WhatsApp (Cloud API). No se usan herramientas que automaticen WhatsApp Web.
-- **Mismo número para bot y personas:** se mantiene el número actual de WhatsApp Business y se conecta con **coexistencia**. El equipo sigue usando la app del celular y el CRM ve y envía mensajes por la API.
+- **Opción A: desarrollo a medida dentro del CRM**, conectado directamente a la API oficial de Meta (Cloud API), sin proveedor intermedio. No se usan herramientas que automaticen WhatsApp Web.
+- **El número pasa a ser exclusivo de la API.** Se deja de usar la app WhatsApp Business del celular para ese número. El equipo lee y responde desde el CRM, que funciona en el navegador del celular y de la computadora. No se usa coexistencia ni proveedor, así que no hay cuota mensual fija.
 - **Volumen estimado:** 100–200 conversaciones por mes.
 - **Derivaciones:** las atiende una persona del equipo.
 - **Alcance:** etapas 0 a 3 completas.
 
-## Qué va a hacer el sistema
+## Qué hace el sistema
 
-1. **Saludo automático.** Cuando entra un caso nuevo con consentimiento de contacto por WhatsApp, el CRM envía una plantilla aprobada por Meta.
-2. **Historial en el CRM.** Todos los mensajes del cliente, del bot y del equipo (enviados desde el CRM o desde el celular) quedan en la ficha del caso, en una pestaña "WhatsApp".
-3. **Consultas que llegan directo por WhatsApp.** Si escribe un número que no existe en el CRM, se crea un caso con origen "WhatsApp". Si ya existe, el mensaje se suma a su caso.
-4. **Documentos a Drive.** Las fotos y PDF que mande el cliente se suben a la carpeta del caso en Google Drive. Si no hay carpeta, se crea automáticamente.
-5. **Asistente con IA.** Responde preguntas frecuentes y la lista de documentos por tipo de garantía, y pide los datos faltantes. **Deriva a la persona del equipo** si:
-   - el cliente lo pide;
-   - el tema es una aprobación, rechazo o Clearing;
-   - hay un reclamo;
-   - no sabe la respuesta.
-
-   No decide aprobaciones ni ve ingresos ni datos de Clearing.
-
-6. **Convivencia bot–persona.** Si alguien del equipo escribe en esa conversación (desde el celular o el CRM), el bot se pausa en ella. Se puede reactivar desde la ficha. También existe un **interruptor general** para apagar el bot.
+1. **Saludo automático.** Cuando entra un caso web con consentimiento de contacto por WhatsApp, el CRM envía la plantilla `saludo_solicitud`.
+2. **Historial en el CRM.** Todos los mensajes del cliente, del equipo y automáticos quedan en la ficha del caso, en la pestaña **WhatsApp**, con estado: enviado, entregado, leído o no enviado (con el motivo).
+3. **Bandeja "WhatsApp".** En el menú aparece una bandeja con todas las conversaciones que el usuario puede ver (los vendedores, solo las de sus casos). Muestra contador de no leídos, avisos del navegador opcionales y el contador en el título de la pestaña.
+4. **Consultas que llegan directo por WhatsApp.** Si escribe un número que no existe en el CRM, se crea un caso con origen "WhatsApp" y el nombre del perfil del cliente. Si existe, el mensaje se suma a su caso. La primera vez que escribe (o tras 12 h sin actividad) recibe una respuesta automática configurable.
+5. **Respuestas manuales.** Se escribe libremente dentro de las 24 h posteriores al último mensaje del cliente. Fuera de ese plazo, el CRM ofrece enviar la plantilla `retomar_conversacion`.
+6. **Documentos a Drive** (etapa 2) y **asistente con IA** con derivación humana (etapa 3).
 
 ## Arquitectura
 
 ```mermaid
 flowchart LR
   W[Formulario web] --> CRM[(Supabase / CRM)]
-  CRM -->|caso nuevo con consentimiento| OB[Cola de envíos]
-  OB -->|cron cada minuto| API[Proveedor / Cloud API]
+  CRM -->|caso con consentimiento| OB[Cola de envíos wa_outbox]
+  UI[CRM en celular o PC] -->|/api/whatsapp/send| OB
+  OB -->|envío inmediato + cron| API[Cloud API de Meta]
   API <--> WA((WhatsApp del cliente))
-  APP[App WhatsApp Business del equipo] <-->|coexistencia| API
   API -->|webhook firmado| WH[/api/whatsapp/webhook]
   WH --> CRM
-  WH --> BOT[Asistente IA]
-  BOT --> API
-  WH --> DR[Google Drive]
 ```
 
-- **Base de datos (Supabase):**
-  - conversaciones, mensajes con su estado (enviado, entregado, leído, fallido) y cola de envíos con reintentos;
-  - configuración del bot: interruptor, textos y documentos por garantía.
-  - Permisos con RLS: el vendedor ve los mensajes de los casos que puede ver; la administración ve todo. Solo el servidor escribe.
-- **Rutas del servidor (Vercel):**
-  - `/api/whatsapp/webhook` recibe mensajes, ecos de la app del celular y estados de entrega. Verifica la firma y no procesa dos veces el mismo mensaje.
-  - `/api/whatsapp/worker`: tarea programada que envía la cola, con reintentos.
-- **Proveedor de WhatsApp:** el código es compatible con la Cloud API de Meta directa y con proveedores que usan su mismo formato, como 360dialog. Se cambia con variables de entorno.
-- **IA:** API de Claude (Anthropic) con herramientas limitadas.
-  - El modelo no recibe ingresos, Clearing ni datos de otros casos.
-  - Las cédulas que escriba el cliente se enmascaran antes de enviarlas al modelo.
+**Base de datos** (migración `012_whatsapp.sql`):
 
-## Etapa 0 — Trámites (los hacés vos, con esta guía)
+- `wa_conversations`, `wa_messages`, `wa_outbox` (cola con reintentos), `wa_settings` (configuración) y `wa_webhook_events` (registro técnico, solo administración).
+- Permisos por RLS: el vendedor ve los mensajes de los casos que puede ver y administración ve todo. Ningún usuario escribe directamente: los envíos pasan por el servidor, que vuelve a verificar el acceso al caso.
+
+**Rutas:**
+
+| Ruta                         | Para qué                                                                                                              |
+| ---------------------------- | --------------------------------------------------------------------------------------------------------------------- |
+| `GET /api/whatsapp/webhook`  | Verificación de suscripción de Meta (token de verificación)                                                           |
+| `POST /api/whatsapp/webhook` | Mensajes y estados. Verifica la firma `X-Hub-Signature-256` con el app secret y no procesa dos veces un mismo mensaje |
+| `POST /api/whatsapp/send`    | Envíos manuales desde el CRM, con la sesión del usuario                                                               |
+| `GET /api/whatsapp/worker`   | Cron: envía lo pendiente y reintenta (protegido con `CRON_SECRET`)                                                    |
+
+**Envíos inmediatos.** Los mensajes salen en el momento:
+
+- el saludo, al entrar el caso por la integración web;
+- la respuesta automática, al recibir el webhook;
+- el mensaje manual, al enviarlo.
+
+El cron solo cubre los reintentos.
+
+**Cron en Vercel.** `vercel.json` lo programa una vez por día, porque el plan Hobby no permite más. En **Vercel Pro**, cambiar el `schedule` a `* * * * *` para que los reintentos sean por minuto.
+
+## Etapa 0 — Trámites (a cargo de Garantía Porto)
 
 ### 0.1 Verificar la empresa en Meta
 
-En [Meta Business Suite](https://business.facebook.com/) → Configuración → Centro de seguridad → **Verificación de la empresa**. Necesitás:
+En [Meta Business Suite](https://business.facebook.com/): Configuración → Centro de seguridad → **Verificación de la empresa**.
 
-- razón social y RUT;
-- dirección;
+Piden:
+
+- razón social, RUT y dirección;
 - un documento que los respalde;
-- un sitio web o dominio a nombre de la empresa.
+- un sitio web con dominio de la empresa.
 
-Tarda entre unos días y dos semanas.
+Demora de días a dos semanas.
 
-### 0.2 Elegir cómo conectar el número con coexistencia
+### 0.2 Crear la app y probar con el número de prueba de Meta
 
-Según la información disponible (noviembre de 2026), Meta habilita la coexistencia mediante un flujo de alta ("Embedded Signup") que ofrecen los **proveedores oficiales**. Para una empresa que conecta su propio número, el camino práctico es un proveedor:
+1. En [Meta for Developers](https://developers.facebook.com/): **Crear app** → tipo **Empresa** → asociarla al portfolio comercial de Garantía Porto → agregar el producto **WhatsApp**.
+2. Meta da un **número de prueba** gratuito. Con él probamos todo antes de tocar el número real.
+3. En Configuración del sistema del portfolio: crear un **usuario del sistema** (administrador), asignarle la app y la cuenta de WhatsApp, y generar un **token permanente** con permisos `whatsapp_business_messaging` y `whatsapp_business_management`. No compartirlo por chat: va directo a Vercel.
+4. Agregar un **método de pago** a la cuenta de WhatsApp (WhatsApp Manager → Configuración de pagos).
 
-| Camino                                                                   | Costo fijo                                          | Tiempo                                             | Comentario                                                                                                                                   |
-| ------------------------------------------------------------------------ | --------------------------------------------------- | -------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------- |
-| **Proveedor oficial con API compatible (recomendado)**, p. ej. 360dialog | ~€49/mes por número + mensajes de Meta, sin recargo | Días                                               | El CRM habla con la API del proveedor, que tiene el mismo formato que la de Meta. El proveedor solo transporta mensajes, no reemplaza al CRM |
-| Registrar una app propia como "Tech Provider" de Meta                    | US$ 0 + mensajes de Meta                            | Semanas, con revisión de Meta y resultado incierto | Más trámite. Se puede migrar más adelante                                                                                                    |
+### 0.3 Pasar el número actual a la API (al final, cuando el CRM esté probado)
 
-**Recomendación:** empezar con el proveedor. Antes de contratar, confirmar con su soporte que admite coexistencia para un número de Uruguay y que ofrece webhook con cabecera secreta.
+> **Importante:** al pasar el número a la API, deja de funcionar en la app WhatsApp Business y **el historial de chats de la app no se traslada**. Hacerlo recién cuando el CRM esté probado con el número de prueba.
 
-**Requisitos del número para coexistencia:**
+1. **Exportar** los chats importantes desde la app: en cada chat → Más → Exportar chat. Guardarlos en un lugar seguro, porque contienen datos personales.
+2. En la app WhatsApp Business: Ajustes → Cuenta → **Eliminar cuenta**. Esto libera el número; no lo da de baja de la línea telefónica.
+3. En WhatsApp Manager → Números de teléfono → **Agregar número**:
+   - ingresar el número y verificarlo por SMS o llamada;
+   - elegir el **nombre visible** ("Garantía Porto"), que Meta revisa.
+4. Copiar el **Phone Number ID** del número real y reemplazar el del número de prueba en Vercel.
 
-- usarlo activamente en la app WhatsApp Business al menos 7 días antes;
-- tener la app actualizada (versión 2.24.17 o superior);
-- que el número no esté conectado a otra API.
+Durante el cambio hay unos minutos u horas en los que el número no recibe mensajes. Conviene hacerlo en un horario de poco movimiento.
 
-Al conectarlo se desvinculan los dispositivos enlazados (WhatsApp Web/escritorio) y hay que volver a vincularlos. **No borrar ni desregistrar el número.**
+### 0.4 Plantillas (WhatsApp Manager → Plantillas de mensajes)
 
-### 0.3 Ajustar el consentimiento del formulario web
+Crear dos plantillas, categoría **Utilidad**, idioma **Español (es)**. El nombre tiene que coincidir con el de la configuración del CRM.
+
+| Nombre                 | Texto sugerido                                                                                                                                                                       |
+| ---------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `saludo_solicitud`     | Hola {{1}}, recibimos tu solicitud de garantía en Garantía Porto. Te escribimos por este medio para ayudarte con los próximos pasos. ¿Querés que te enviemos la lista de documentos? |
+| `retomar_conversacion` | Hola {{1}}, te escribimos de Garantía Porto para seguir con tu solicitud de garantía. ¿Podés responder este mensaje para continuar?                                                  |
+
+`{{1}}` es el nombre de pila. Meta decide la categoría final: si la clasifica como marketing, el costo por mensaje sube.
+
+### 0.5 Consentimiento del formulario web
 
 **Texto actual:** "Acepto que un asesor se contacte conmigo por WhatsApp."
 
 **Texto recomendado:** "Acepto que Garantía Porto me contacte por WhatsApp sobre mi solicitud, incluso con mensajes automáticos."
 
-Motivo: Meta pide que el permiso nombre a la empresa y al canal, y el bot envía mensajes automáticos. Hay que cambiar el texto en los dos formularios de Elementor. El CRM ya guarda la evidencia (`consent_evidence`) cuando el puente de WordPress está activo.
+Meta pide que el permiso nombre a la empresa y al canal, y el CRM envía mensajes automáticos. Hay que cambiarlo en los dos formularios de Elementor. **El saludo automático solo se envía si el caso trae ese consentimiento** (`consent_evidence`). Para casos cargados a mano, el CRM pide confirmar el consentimiento antes de enviar el saludo.
 
-### 0.4 Plantilla de saludo
+### 0.6 Variables en Vercel (Settings → Environment Variables)
 
-La creo desde el CRM o desde WhatsApp Manager cuando el número esté conectado. Borrador (categoría "utilidad"):
+| Variable                   | Valor                                                  |
+| -------------------------- | ------------------------------------------------------ |
+| `WHATSAPP_ENABLED`         | `false` hasta terminar las pruebas; después `true`     |
+| `WHATSAPP_PHONE_NUMBER_ID` | ID del número (primero el de prueba)                   |
+| `WHATSAPP_API_TOKEN`       | Token permanente del usuario del sistema               |
+| `WHATSAPP_APP_SECRET`      | App → Configuración → Básica → Clave secreta de la app |
+| `WHATSAPP_VERIFY_TOKEN`    | Un texto aleatorio de 32+ caracteres que elegís vos    |
+| `WHATSAPP_GRAPH_VERSION`   | `v23.0`, o la versión vigente que indique Meta         |
+| `CRON_SECRET`              | Texto aleatorio de 32+ caracteres                      |
 
-> Hola {{1}}, recibimos tu solicitud de garantía en Garantía Porto. Te escribimos por este medio para ayudarte con los próximos pasos. ¿Querés que te enviemos la lista de documentos?
+Ya existen, y también son necesarias: `NEXT_PUBLIC_SUPABASE_URL`, `NEXT_PUBLIC_SUPABASE_ANON_KEY` y `SUPABASE_SERVICE_ROLE_KEY`.
 
-Meta decide la categoría final. Si la clasifica como marketing, el costo por mensaje sube (ver costos).
+### 0.7 Conectar el webhook
 
-### 0.5 Variables a cargar en Vercel (no compartirlas por chat)
+En la app de Meta → WhatsApp → Configuración → **Webhook**:
 
-| Variable                   | Qué es                                                                                         |
-| -------------------------- | ---------------------------------------------------------------------------------------------- |
-| `WHATSAPP_API_BASE_URL`    | `https://graph.facebook.com/v23.0` (Meta directo) o la URL del proveedor                       |
-| `WHATSAPP_API_TOKEN`       | Token de acceso del sistema o API key del proveedor                                            |
-| `WHATSAPP_PHONE_NUMBER_ID` | ID del número (Meta directo; con proveedor puede no aplicar)                                   |
-| `WHATSAPP_WEBHOOK_SECRET`  | Secreto para validar los webhooks: el app secret de Meta, o una cabecera secreta del proveedor |
-| `WHATSAPP_VERIFY_TOKEN`    | Token de verificación del webhook (solo Meta directo)                                          |
-| `WHATSAPP_ENABLED`         | `false` hasta terminar las pruebas                                                             |
-| `CRON_SECRET`              | Protege la tarea programada de envíos                                                          |
-| `GOOGLE_DRIVE_*`           | Etapa 2                                                                                        |
-| `ANTHROPIC_API_KEY`        | Etapa 3                                                                                        |
+- URL de devolución de llamada: `https://<dominio-del-crm>/api/whatsapp/webhook`
+- Token de verificación: el mismo valor de `WHATSAPP_VERIFY_TOKEN`
+- Suscribir el campo **messages**
+
+## Prueba antes de usar el número real
+
+1. Con el número de prueba: agregar tu celular como destinatario de prueba en Meta. Después:
+   - crear un caso con tu celular desde el CRM;
+   - en la pestaña WhatsApp, marcar el consentimiento y enviar el saludo;
+   - responder desde tu celular y verificar que la respuesta aparece en el CRM;
+   - responder desde el CRM.
+2. Escribir desde otro celular que no esté en el CRM y verificar que se crea el caso "WhatsApp" con la respuesta automática.
+3. Recién entonces pasar el número real (0.3).
+
+## Configuración en el CRM
+
+La tabla `wa_settings` (editable por administración) define:
+
+- si se envía el saludo automático;
+- los nombres de las plantillas;
+- el idioma;
+- el texto de la respuesta automática.
+
+Por ahora se edita desde Supabase. Una pantalla de configuración en "Integraciones" llega con la etapa 3.
 
 ## Etapas de desarrollo
 
-| Etapa         | Contenido                                                                                                                                                               | Estado                    |
-| ------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------- |
-| Prerrequisito | Corrección de la auditoría de seguridad (migración 011)                                                                                                                 | PR abierto                |
-| 0             | Trámites de Meta y del proveedor, consentimiento, plantilla                                                                                                             | A cargo de Garantía Porto |
-| 1             | Base de datos, webhook, envío con cola y reintentos, saludo automático, casos desde WhatsApp, pestaña WhatsApp en la ficha, pausa del bot por intervención humana, demo | En desarrollo             |
-| 2             | Documentos → Google Drive (creación de carpeta, validación de tipo y tamaño)                                                                                            | Pendiente                 |
-| 3             | Asistente con IA, base de respuestas y documentos por garantía editable, derivación, piloto con pocos casos                                                             | Pendiente                 |
-
-Todo se desarrolla y prueba primero sin conexión real, con datos ficticios. La activación con el número real se hace con `WHATSAPP_ENABLED=true` después de una prueba con tu propio celular.
+| Etapa         | Contenido                                                                                                                                             | Estado                    |
+| ------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------- |
+| Prerrequisito | Corrección de la auditoría de seguridad (migración 011)                                                                                               | Listo para revisar        |
+| 0             | Trámites de Meta, plantillas, consentimiento                                                                                                          | A cargo de Garantía Porto |
+| 1             | Base de datos, webhook, envíos con cola y reintentos, saludo automático, casos desde WhatsApp, respuesta automática, pestaña y bandeja WhatsApp, demo | Listo para revisar        |
+| 2             | Documentos → Google Drive                                                                                                                             | Pendiente                 |
+| 3             | Asistente con IA, base de respuestas, documentos por garantía, derivación, configuración en pantalla, piloto                                          | Pendiente                 |
 
 ## Costos estimados (100–200 conversaciones/mes)
 
-| Concepto                                                             | Costo mensual aproximado |
-| -------------------------------------------------------------------- | ------------------------ |
-| Proveedor para coexistencia                                          | ~€49 (≈ US$ 55)          |
-| Mensajes de Meta (saludos + respuestas; 1.000 respuestas/mes gratis) | US$ 3–20                 |
-| IA (etapa 3)                                                         | US$ 5–30                 |
-| Vercel Pro y Supabase Pro (si todavía no se pagan)                   | ~US$ 45                  |
-| Google Drive API                                                     | sin costo adicional      |
+| Concepto                                                                                           | Costo mensual aproximado |
+| -------------------------------------------------------------------------------------------------- | ------------------------ |
+| Saludos con plantilla de utilidad (~US$ 0,011 c/u; ~US$ 0,074 si Meta la clasifica como marketing) | US$ 2–15                 |
+| Respuestas del equipo y automáticas: las primeras 1.000 por mes gratis, después ~US$ 0,011 c/u     | US$ 0–25                 |
+| IA (etapa 3)                                                                                       | US$ 5–30                 |
+| Vercel Pro y Supabase Pro (si todavía no se pagan)                                                 | ~US$ 45                  |
 
-Las tarifas de Meta cambian cada trimestre: verificarlas en WhatsApp Manager al conectar.
+Tarifas de la región "Resto de Latinoamérica", vigentes desde el 1/10/2026 según fuentes de proveedores de Meta. Verificarlas en WhatsApp Manager.
 
-## Datos que faltan
+## Datos pendientes
 
-- [ ] ¿Usan **Google Workspace** (correo @dominio de la empresa) o una cuenta Gmail común para Drive? Cambia la forma de conectar Drive en la etapa 2.
-- [ ] Horario de atención de la persona que toma las derivaciones, y el nombre con el que el bot la presenta.
-- [ ] Lista de documentos por tipo de garantía (tradicional, universitaria, rural) y preguntas frecuentes con sus respuestas aprobadas (etapa 3).
+- [ ] ¿Usan **Google Workspace** o una cuenta Gmail común para Drive? (etapa 2)
+- [ ] Horario de atención de la persona que toma las derivaciones, y el nombre con el que el bot la presenta (etapa 3).
+- [ ] Lista de documentos por tipo de garantía y preguntas frecuentes con respuestas aprobadas (etapa 3).

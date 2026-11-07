@@ -1,6 +1,8 @@
 import { createClient } from "@supabase/supabase-js";
 import { createHmac, timingSafeEqual } from "node:crypto";
+import { after } from "next/server";
 import { eventSchema } from "@/lib/domain";
+import { processOutbox, waConfig } from "@/lib/whatsapp-server";
 export const runtime = "nodejs";
 export async function POST(req: Request) {
   if (process.env.CRM_INTEGRATION_ENABLED !== "true")
@@ -70,5 +72,11 @@ export async function POST(req: Request) {
       { status: error.code === "P0001" ? 409 : 503 },
     );
   }
+  // A new web lead with WhatsApp consent queues a greeting; send it now instead of waiting for cron.
+  const wa = waConfig();
+  if (wa.enabled)
+    after(async () => {
+      await processOutbox(db, wa, 5).catch(() => undefined);
+    });
   return Response.json(data);
 }

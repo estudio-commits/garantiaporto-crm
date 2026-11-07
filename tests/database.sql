@@ -19,7 +19,7 @@ do $$begin
 
  update applications set guarantee_stage='preaprobacion_cargada',source_id='40000000-0000-4000-8000-000000000002' where id='10000000-0000-4000-8000-000000000001';
  if (select decision from applications where id='10000000-0000-4000-8000-000000000001')<>'no_presentada' then raise exception 'Pipeline altered formal decision';end if;
- if (select count(*) from client_sources)<>2 then raise exception 'Seller cannot read origins';end if;
+ if (select count(*) from client_sources where id in('40000000-0000-4000-8000-000000000001','40000000-0000-4000-8000-000000000002'))<>2 then raise exception 'Seller cannot read origins';end if;
  begin insert into client_sources(name) values('Forbidden seller origin');raise exception 'Seller can create origin';exception when insufficient_privilege then null;end;
  update client_sources set name='Forbidden rename' where id='40000000-0000-4000-8000-000000000002';if found then raise exception 'Seller can rename origin';end if;
 

@@ -26,6 +26,7 @@ import {
   X,
   Download,
   RefreshCw,
+  MessageCircle,
 } from "lucide-react";
 import { supabase } from "@/lib/supabase";
 import UserCreator from "./user-creator";
@@ -46,6 +47,7 @@ import SourceManager from "./source-manager";
 import Statistics from "./statistics";
 import FollowUp from "./follow-up";
 import CommentForm from "./comment-form";
+import { WhatsAppInbox, useWhatsAppUnread } from "./whatsapp";
 import { sourceName, upgradeStore } from "@/lib/sources";
 import { seed, adminId } from "@/lib/demo";
 import {
@@ -142,7 +144,9 @@ export default function CRM() {
     [modal, setModal] = useState<"lead" | "field" | null>(null),
     [message, setMessage] = useState(""),
     [busy, setBusy] = useState(false),
-    [integration, setIntegration] = useState<Record<string, unknown>[]>([]);
+    [integration, setIntegration] = useState<Record<string, unknown>[]>([]),
+    [caseTab, setCaseTab] = useState<string | undefined>(undefined);
+  const waUnread = useWhatsAppUnread(demo, !!profile);
   useEffect(() => {
     const timer = setInterval(() => setNow(Date.now()), 60000);
     return () => clearInterval(timer);
@@ -543,6 +547,7 @@ export default function CRM() {
             ["Pipeline", Columns3],
             ["Lista de clientes", Inbox],
             ["Estadísticas", Activity],
+            ["WhatsApp", MessageCircle],
             ...(isAdmin
               ? [
                   ["Equipo", Users],
@@ -563,6 +568,11 @@ export default function CRM() {
                 {String(name)}
                 {name === "Lista de clientes" && (
                   <span className="nav-count">{active.length}</span>
+                )}
+                {name === "WhatsApp" && waUnread > 0 && (
+                  <span className="nav-count" aria-label="mensajes sin leer">
+                    {waUnread}
+                  </span>
                 )}
               </button>
             );
@@ -647,9 +657,13 @@ export default function CRM() {
               profile={profile}
               busy={busy}
               mutate={mutate}
-              back={() => setSelected(null)}
+              back={() => {
+                setSelected(null);
+                setCaseTab(undefined);
+              }}
               guarantee={changeGuarantee}
               now={now}
+              initialTab={caseTab}
             />
           ) : (
             <>
@@ -664,11 +678,13 @@ export default function CRM() {
                           ? "Seguí cada oportunidad a lo largo del proceso comercial."
                           : page === "Estadísticas"
                             ? "Orígenes, resultados y seguimiento del equipo."
-                            : page === "Control de datos"
-                              ? "Administrá los orígenes y los campos de tus solicitudes."
-                              : page === "Equipo"
-                                ? "Administrá accesos y responsabilidades."
-                                : "Seguimiento de la recepción de formularios."}
+                            : page === "WhatsApp"
+                              ? "Conversaciones con clientes, respondidas desde el CRM."
+                              : page === "Control de datos"
+                                ? "Administrá los orígenes y los campos de tus solicitudes."
+                                : page === "Equipo"
+                                  ? "Administrá accesos y responsabilidades."
+                                  : "Seguimiento de la recepción de formularios."}
                     </p>
                   </div>
                   {page === "Pipeline" && (
@@ -819,6 +835,16 @@ export default function CRM() {
                     </section>
                   </div>
                 </>
+              )}
+              {page === "WhatsApp" && (
+                <WhatsAppInbox
+                  applications={allowed}
+                  demo={demo}
+                  open={(id) => {
+                    setCaseTab("WhatsApp");
+                    setSelected(id);
+                  }}
+                />
               )}
               {page === "Estadísticas" && (
                 <Statistics

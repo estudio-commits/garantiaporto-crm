@@ -25,6 +25,8 @@ import Issuance from "./issuance";
 import Marketing from "./marketing";
 import CommentForm from "./comment-form";
 import FollowUp from "./follow-up";
+import { WhatsAppPanel } from "./whatsapp";
+import { supabase } from "@/lib/supabase";
 export type Mutate = (
   k: keyof Store,
   v: Record<string, unknown>,
@@ -41,6 +43,7 @@ export default function CaseDetail({
   guarantee,
   compact = false,
   now,
+  initialTab,
 }: {
   app: Application;
   store: Store;
@@ -51,8 +54,9 @@ export default function CaseDetail({
   guarantee: (id: string, value: string) => Promise<boolean>;
   compact?: boolean;
   now: number;
+  initialTab?: string;
 }) {
-  const [tab, setTab] = useState("Ficha"),
+  const [tab, setTab] = useState(initialTab ?? "Ficha"),
     [error, setError] = useState("");
   const admin = profile.role === "admin";
   const sensitive = store.sensitive.find((s) => s.application_id === a.id);
@@ -159,15 +163,17 @@ export default function CaseDetail({
         </span>
       </div>
       <div className="detail-tabs tabs">
-        {["Ficha", "Historial y seguimientos", "Marketing"].map((t) => (
-          <button
-            key={t}
-            className={tab === t ? "selected" : ""}
-            onClick={() => setTab(t)}
-          >
-            {t}
-          </button>
-        ))}
+        {["Ficha", "Historial y seguimientos", "WhatsApp", "Marketing"].map(
+          (t) => (
+            <button
+              key={t}
+              className={tab === t ? "selected" : ""}
+              onClick={() => setTab(t)}
+            >
+              {t}
+            </button>
+          ),
+        )}
       </div>
       {error && (
         <p role="alert" className="alert">
@@ -559,6 +565,8 @@ export default function CaseDetail({
         </>
       ) : tab === "Marketing" ? (
         <Marketing app={a} admin={admin} />
+      ) : tab === "WhatsApp" ? (
+        <WhatsAppPanel app={a} profile={profile} demo={!supabase} />
       ) : (
         <section className="card padded">
           <h2>Historial y seguimientos</h2>
