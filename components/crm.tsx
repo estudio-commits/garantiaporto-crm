@@ -81,6 +81,12 @@ const tables: Record<keyof Store, string> = {
   fields: "custom_field_definitions",
   values: "custom_field_values",
 };
+// Since migration 011 client roles can read every applications column except the
+// web continuation identifier (external_id) and contact_id, so `select *` would fail.
+const APPLICATION_COLUMNS: string =
+  "id,full_name,phone,rent_amount,rent_currency,guarantee_type,source,assigned_user_id,created_at,updated_at,completion,contact_status,first_contact_at,first_contact_by,stage,preapproval,documentation,decision,decision_date,decision_reference,summary,archived,attribution,source_id,guarantee_stage,requested_date,drive_folder_url,national_id,issued_date,issued_reference,decision_date_unknown,issued_reference_unknown,follow_up_date";
+const columnsFor = (k: keyof Store) =>
+  k === "applications" ? APPLICATION_COLUMNS : "*";
 const date = (s: string) =>
   new Intl.DateTimeFormat("es-UY", {
     day: "2-digit",
@@ -173,7 +179,10 @@ export default function CRM() {
           ? "application_id"
           : "id";
         for (let offset = 0; ; offset += 500) {
-          let query = supabase!.from(tables[k]).select("*").order(orderKey);
+          let query = supabase!
+            .from(tables[k])
+            .select(columnsFor(k))
+            .order(orderKey);
           if (k === "values") query = query.order("field_id");
           const r = await query.range(offset, offset + 499);
           if (r.error) throw Error(r.error.message);
@@ -254,14 +263,17 @@ export default function CRM() {
             ? await q.insert(value)
             : mode === "upsert"
               ? await q.upsert(value)
-              : await q.update(value).eq(match, value[match]).select();
+              : await q
+                  .update(value)
+                  .eq(match, value[match])
+                  .select(columnsFor(k));
         if (r.error) throw Error(r.error.message);
         if (mode === "update" && (!r.data || r.data.length === 0))
           throw Error(
             "No se pudo guardar: el registro ya no está disponible o no tenés permiso.",
           );
         if (k === "applications" && mode === "update" && r.data) {
-          const confirmed = r.data as Application[];
+          const confirmed = r.data as unknown as Application[];
           setStore((previous) => ({
             ...previous,
             applications: previous.applications.map(
