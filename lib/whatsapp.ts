@@ -313,3 +313,75 @@ export function explainError(code?: number, fallback = "") {
 
 export const firstName = (fullName: string) =>
   fullName.trim().split(/\s+/)[0] || "¡hola!";
+
+const TZ = "America/Montevideo";
+const dayKey = (t: number) =>
+  new Intl.DateTimeFormat("en-CA", { timeZone: TZ }).format(new Date(t));
+/** Calendar days between two instants in Montevideo (0 = same day). */
+function daysAgo(iso: string, now: number) {
+  return Math.round(
+    (Date.parse(dayKey(now)) - Date.parse(dayKey(Date.parse(iso)))) / 86400000,
+  );
+}
+
+/** Inbox order like WhatsApp: unread conversations first, then most recent activity. */
+export function sortInbox<
+  T extends { unread_count: number; last_message_at: string | null },
+>(list: T[]): T[] {
+  return [...list].sort(
+    (a, b) =>
+      Number(b.unread_count > 0) - Number(a.unread_count > 0) ||
+      (b.last_message_at ?? "").localeCompare(a.last_message_at ?? ""),
+  );
+}
+
+/** Inbox timestamp: 14:05 today, "Ayer", weekday within a week, otherwise 03/11/26. */
+export function listTime(iso: string, now = Date.now()) {
+  const d = daysAgo(iso, now);
+  const date = new Date(iso);
+  if (d <= 0)
+    return new Intl.DateTimeFormat("es-UY", {
+      hour: "2-digit",
+      minute: "2-digit",
+      hour12: false,
+      timeZone: TZ,
+    }).format(date);
+  if (d === 1) return "Ayer";
+  if (d < 7)
+    return new Intl.DateTimeFormat("es-UY", {
+      weekday: "long",
+      timeZone: TZ,
+    }).format(date);
+  return new Intl.DateTimeFormat("es-UY", {
+    day: "2-digit",
+    month: "2-digit",
+    year: "2-digit",
+    timeZone: TZ,
+  }).format(date);
+}
+
+/** Separator shown between days in a chat thread. */
+export function dayLabel(iso: string, now = Date.now()) {
+  const d = daysAgo(iso, now);
+  if (d <= 0) return "Hoy";
+  if (d === 1) return "Ayer";
+  const label = new Intl.DateTimeFormat("es-UY", {
+    weekday: "long",
+    day: "numeric",
+    month: "long",
+    timeZone: TZ,
+  }).format(new Date(iso));
+  return (label.charAt(0).toUpperCase() + label.slice(1)).replace(",", "");
+}
+
+export const sameDay = (a: string, b: string) =>
+  dayKey(Date.parse(a)) === dayKey(Date.parse(b));
+
+export const initials = (name: string) =>
+  name
+    .trim()
+    .split(/\s+/)
+    .filter(Boolean)
+    .slice(0, 2)
+    .map((w) => w[0]!.toUpperCase())
+    .join("") || "?";

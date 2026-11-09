@@ -27,6 +27,7 @@ import {
   Download,
   RefreshCw,
   MessageCircle,
+  ChevronDown,
 } from "lucide-react";
 import { supabase } from "@/lib/supabase";
 import UserCreator from "./user-creator";
@@ -119,6 +120,7 @@ export default function CRM() {
     [profile, setProfile] = useState<Profile | null>(null),
     [ready, setReady] = useState(false),
     [page, setPage] = useState("Inicio"),
+    [menuOpen, setMenuOpen] = useState(false),
     [pipelineKind, setPipelineKind] = useState<"commercial" | "guarantee">(
       "commercial",
     ),
@@ -147,6 +149,17 @@ export default function CRM() {
     [busy, setBusy] = useState(false),
     [caseTab, setCaseTab] = useState<string | undefined>(undefined);
   const waUnread = useWhatsAppUnread(demo, !!profile);
+  useEffect(() => {
+    if (!menuOpen) return;
+    const close = (e: KeyboardEvent) =>
+      e.key === "Escape" && setMenuOpen(false);
+    document.addEventListener("keydown", close);
+    document.body.style.overflow = "hidden";
+    return () => {
+      document.removeEventListener("keydown", close);
+      document.body.style.overflow = "";
+    };
+  }, [menuOpen]);
   useEffect(() => {
     const timer = setInterval(() => setNow(Date.now()), 60000);
     return () => clearInterval(timer);
@@ -448,6 +461,7 @@ export default function CRM() {
   const current = allowed.find((a) => a.id === selected);
   const isAdmin = profile?.role === "admin";
   const navigate = (p: string) => {
+    setMenuOpen(false);
     setPage(p);
     setPipelineStage("all");
     setCommentTarget(null);
@@ -522,8 +536,106 @@ export default function CRM() {
       </div>
     );
   if (!profile) return <Login message={message} onMessage={setMessage} />;
+  const sections: [string, typeof Inbox][] = [
+    ["Inicio", LayoutDashboard],
+    ["Pipeline", Columns3],
+    ["Lista de clientes", Inbox],
+    ["Estadísticas", Activity],
+    ["WhatsApp", MessageCircle],
+    ...(isAdmin
+      ? ([
+          ["Equipo", Users],
+          ["Control de datos", Settings2],
+          ["Integraciones", Link2],
+        ] as [string, typeof Inbox][])
+      : []),
+  ];
+  // On phones only the most used sections fit in the top bar; the rest open in the full-screen menu.
+  const quick = ["Inicio", "Pipeline", "Lista de clientes", "WhatsApp"];
+  const badge = (name: string) =>
+    name === "Lista de clientes" ? (
+      <span className="nav-count">{active.length}</span>
+    ) : name === "WhatsApp" && waUnread > 0 ? (
+      <span className="nav-count wa-count" aria-label="mensajes sin leer">
+        {waUnread}
+      </span>
+    ) : null;
+  const signOut = () => supabase!.auth.signOut();
   return (
-    <div className="shell">
+    <div className={menuOpen ? "shell menu-open" : "shell"}>
+      <header className="mobile-bar">
+        <button
+          className="mobile-brand"
+          aria-label="Porto Seguro Corredores · Inicio"
+          onClick={() => navigate("Inicio")}
+        >
+          <img src="/brand/icon.svg" alt="" width="30" height="30" />
+        </button>
+        <nav aria-label="Secciones principales">
+          {sections
+            .filter(([name]) => quick.includes(name))
+            .map(([name, I]) => (
+              <button
+                key={name}
+                aria-label={name}
+                title={name}
+                className={page === name && !menuOpen ? "active" : ""}
+                onClick={() => navigate(name)}
+              >
+                <I size={21} />
+                {name === "WhatsApp" && waUnread > 0 && (
+                  <span className="mobile-dot" aria-label="mensajes sin leer">
+                    {waUnread}
+                  </span>
+                )}
+              </button>
+            ))}
+        </nav>
+        <button
+          className={menuOpen ? "mobile-more open" : "mobile-more"}
+          aria-label={menuOpen ? "Cerrar menú" : "Abrir menú"}
+          aria-expanded={menuOpen}
+          onClick={() => setMenuOpen(!menuOpen)}
+        >
+          <span>{menuOpen ? "Cerrar" : "Menú"}</span>
+          <ChevronDown size={18} />
+        </button>
+      </header>
+      {menuOpen && (
+        <div
+          className="mobile-menu"
+          role="dialog"
+          aria-modal="true"
+          aria-label="Menú"
+        >
+          <div className="mobile-menu-grid">
+            {sections.map(([name, I]) => (
+              <button
+                key={name}
+                aria-label={name}
+                className={page === name ? "active" : ""}
+                onClick={() => navigate(name)}
+              >
+                <I size={24} />
+                <span>{name}</span>
+                {badge(name)}
+              </button>
+            ))}
+          </div>
+          <div className="mobile-menu-user">
+            <span className="avatar">{profile.full_name.slice(0, 1)}</span>
+            <div>
+              {profile.full_name}
+              <small>{isAdmin ? "Administrador" : "Vendedor"}</small>
+            </div>
+            {!demo && (
+              <button className="secondary" onClick={signOut}>
+                <LogOut size={16} /> Cerrar sesión
+              </button>
+            )}
+          </div>
+        </div>
+      )}
       <aside className="sidebar">
         <button
           className="brand official-brand"
@@ -553,42 +665,19 @@ export default function CRM() {
           <ChevronRight size={15} />
         </div>
         <span className="nav-caption">PRINCIPAL</span>
-        <nav>
-          {[
-            ["Inicio", LayoutDashboard],
-            ["Pipeline", Columns3],
-            ["Lista de clientes", Inbox],
-            ["Estadísticas", Activity],
-            ["WhatsApp", MessageCircle],
-            ...(isAdmin
-              ? [
-                  ["Equipo", Users],
-                  ["Control de datos", Settings2],
-                  ["Integraciones", Link2],
-                ]
-              : []),
-          ].map(([name, Icon]) => {
-            const I = Icon as typeof Inbox;
-            return (
-              <button
-                key={String(name)}
-                aria-label={String(name)}
-                className={page === name ? "active" : ""}
-                onClick={() => navigate(String(name))}
-              >
-                <I size={19} />
-                {String(name)}
-                {name === "Lista de clientes" && (
-                  <span className="nav-count">{active.length}</span>
-                )}
-                {name === "WhatsApp" && waUnread > 0 && (
-                  <span className="nav-count" aria-label="mensajes sin leer">
-                    {waUnread}
-                  </span>
-                )}
-              </button>
-            );
-          })}
+        <nav aria-label="Secciones">
+          {sections.map(([name, I]) => (
+            <button
+              key={name}
+              aria-label={name}
+              className={page === name ? "active" : ""}
+              onClick={() => navigate(name)}
+            >
+              <I size={19} />
+              {name}
+              {badge(name)}
+            </button>
+          ))}
         </nav>
         <div className="sidebar-bottom">
           <div className="security">
@@ -607,10 +696,7 @@ export default function CRM() {
               <small>{isAdmin ? "Administrador" : "Vendedor"}</small>
             </div>
             {!demo && (
-              <button
-                title="Cerrar sesión"
-                onClick={() => supabase!.auth.signOut()}
-              >
+              <button title="Cerrar sesión" onClick={signOut}>
                 <LogOut size={17} />
               </button>
             )}
@@ -851,6 +937,7 @@ export default function CRM() {
               {page === "WhatsApp" && (
                 <WhatsAppInbox
                   applications={allowed}
+                  profile={profile!}
                   demo={demo}
                   open={(id) => {
                     setCaseTab("WhatsApp");
