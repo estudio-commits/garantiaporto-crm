@@ -176,14 +176,16 @@ Cuando el cliente manda un **PDF, una imagen o un Word** (hasta 20 MB) por Whats
 - **Cédula:** si el cliente la escribe, la registra el servidor y **no se envía al modelo**; el modelo ve "[cédula]".
 - **Deriva a Lucía cuando corresponde:**
   - el cliente pide una persona, reclama o pregunta por aprobación, rechazo o Clearing;
-  - pide el costo exacto (el asistente primero pide el monto del alquiler);
-  - la garantía es universitaria o rural;
+  - consulta por **garantía rural** (se gestiona de forma personalizada);
+  - quiere la cotización exacta después de recibir el costo aproximado;
   - no sabe la respuesta, o pasaron 40 respuestas automáticas.
 
   Al derivar, el cliente recibe el aviso aprobado (con el horario si es fuera de hora), el chat queda marcado **"Requiere atención"** en la bandeja y el asistente se pausa.
 
 - **Cuando alguien del equipo escribe** en un chat desde el CRM, el asistente se pausa en ese chat. Se reactiva con **Reactivar asistente** en la pestaña WhatsApp del caso.
-- **Nunca** dice si una garantía está aprobada o rechazada, no calcula costos y no pide contraseñas ni tarjetas.
+- **Costo:** con el monto del alquiler informa un **costo aproximado (70% del importe del alquiler)**, calculado por el CRM, no por la IA, y aclara que se puede financiar con tarjeta sin recargo.
+- **Garantía universitaria:** misma lista de documentos que la tradicional.
+- **Nunca** dice si una garantía está aprobada o rechazada, y no pide contraseñas ni tarjetas.
 
 ### Activación paso a paso
 

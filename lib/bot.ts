@@ -6,6 +6,7 @@ import Anthropic from "@anthropic-ai/sdk";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import {
   documentListMessage,
+  estimateCost,
   handoffMessage,
   INCOME_PROFILES,
   systemPrompt,
@@ -166,6 +167,24 @@ export const BOT_TOOLS: Anthropic.Beta.BetaTool[] = [
       required: ["situacion_ingresos"],
       properties: {
         situacion_ingresos: { type: "string", enum: PROFILE_KEYS },
+      },
+    },
+  },
+  {
+    name: "estimar_costo",
+    description:
+      "Calcula el costo aproximado de la garantía (70% del importe del alquiler) y guarda el monto en el CRM. Devuelve el importe ya formateado para informarlo como aproximado.",
+    strict: true,
+    input_schema: {
+      type: "object",
+      additionalProperties: false,
+      required: ["monto_alquiler", "moneda"],
+      properties: {
+        monto_alquiler: {
+          type: "number",
+          description: "Monto mensual del alquiler que dio el cliente.",
+        },
+        moneda: { type: "string", enum: ["UYU", "USD"] },
       },
     },
   },
@@ -427,6 +446,16 @@ export async function runBotTurn(
             await enqueue(documentListMessage(p));
             state = { ...state, income_profile: p, documents_sent_for: p };
             result = "Lista enviada al cliente. No la repitas.";
+          } else if (use.name === "estimar_costo") {
+            const rent = Number(input.monto_alquiler);
+            const currency = input.moneda === "USD" ? "USD" : "UYU";
+            if (!Number.isFinite(rent) || rent <= 0 || rent > 1e9)
+              throw Error("Monto de alquiler inválido");
+            await db.rpc("wa_bot_update_case", {
+              p_application: c.application_id,
+              f: { rent_amount: rent, rent_currency: currency },
+            });
+            result = `Costo aproximado: ${estimateCost(rent, currency)} (70% del alquiler de ${currency} ${rent}). Informalo como aproximado; se puede financiar con tarjeta sin recargo.`;
           } else if (use.name === "derivar_a_persona") {
             await handoff(
               String(input.motivo || "Derivación solicitada por el asistente"),

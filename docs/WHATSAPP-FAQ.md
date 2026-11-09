@@ -1,6 +1,6 @@
 # Asistente de WhatsApp — preguntas frecuentes y documentos
 
-> **Estado: aprobado por Garantía Porto el 9/11/2026**, salvo los puntos marcados **[CONFIRMAR]**.
+> **Estado: aprobado por Garantía Porto el 9/11/2026.**
 > El asistente solo usa estas respuestas. Ante cualquier pregunta que no esté acá, deriva a una persona.
 
 ## Atención humana
@@ -44,7 +44,7 @@ El asistente pregunta primero cuál es tu situación y después envía solo la l
 - Certificados vigentes de BPS y DGI.
 - Última declaración jurada presentada ante DGI (IRPF, IRAE o IMEBA).
 
-> **[CONFIRMAR]** ¿La garantía **universitaria** pide los mismos documentos, de la persona que respalda al estudiante? ¿La **rural** pide algo distinto? Hasta confirmarlo, para universitaria y rural el asistente deriva a Lucía para la lista de documentos.
+> **Universitaria:** pide los mismos documentos que la tradicional, según la situación de ingresos de quien los presenta. **Rural:** el asistente deriva directamente a Lucía, porque se gestiona de forma personalizada (confirmado el 9/11/2026).
 
 ## Preguntas frecuentes (respuestas propuestas)
 
@@ -63,7 +63,7 @@ Por este mismo chat, como foto nítida o en PDF. Aceptamos archivos de hasta 20 
 **5. ¿Cuánto cuesta la garantía?**
 El costo de la garantía depende del importe del alquiler, es un % de aproximadamente un 70%, y se puede financiar con tarjeta de crédito, sin recargo.
 
-> **[CONFIRMAR]** ¿El 70% es de **un mes de alquiler**, se paga **una vez por contrato** o **por año**? Hasta confirmarlo, el asistente no calcula montos: pide el valor del alquiler y deriva a Lucía para la cotización exacta. Si querés saber exacto cuánto va a ser el costo, decime cuál es el monto por el que tenés pensado alquilar.
+> **Confirmado el 9/11/2026:** el 70% se calcula sobre el importe del alquiler. El asistente informa el monto aproximado, calculado por el CRM, y deriva si el cliente quiere la cotización exacta.
 
 **7. ¿Cuánto demora la aprobación?**
 Cuando tenemos toda la documentación, el análisis de crédito se hace en el momento prácticamente, y te avisamos por este medio. La emisión final, necesitamos del contrato e inventario para solicitarla, y puede hacerse en el momento también.

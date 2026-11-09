@@ -74,7 +74,8 @@ test("approved texts: document list and handoff messages", () => {
     "17:00",
   );
   assert.match(sys, /Nunca digas que una garantía está aprobada/);
-  assert.doesNotMatch(sys, /70%/);
+  assert.match(sys, /aproximadamente un 70% del importe del alquiler/);
+  assert.match(sys, /garantía rural: derivá enseguida/);
 });
 
 test("tools are strict and schema-closed", () => {
@@ -443,4 +444,34 @@ test("very long customer messages are truncated before reaching the model", () =
     "Lucía",
   );
   assert.equal(String(msgs[0].content).length, 1500);
+});
+
+test("cost estimate is computed by the server, not by the model", async () => {
+  const { estimateCost } = await import("../lib/bot-knowledge");
+  assert.equal(estimateCost(25000, "UYU"), "$ 17.500");
+  assert.equal(estimateCost(1000, "USD"), "US$ 700");
+  const { db, calls } = fakeDb();
+  const { client, requests } = fakeClient([
+    {
+      stop_reason: "tool_use",
+      content: [
+        toolUse("estimar_costo", { monto_alquiler: 25000, moneda: "UYU" }),
+      ],
+    },
+    {
+      stop_reason: "end_turn",
+      content: [text("Sería aproximadamente $ 17.500.")],
+    },
+  ]);
+  await runBotTurn(db, cfg, "conv-1", client);
+  assert.ok(
+    calls.rpc.some(
+      ([n, a]) =>
+        n === "wa_bot_update_case" && (a.f as Row).rent_amount === 25000,
+    ),
+  );
+  const toolResult = JSON.stringify(
+    (requests[1] as { messages: unknown[] }).messages.at(-1),
+  );
+  assert.match(toolResult, /Costo aproximado: \$ 17\.500/);
 });
