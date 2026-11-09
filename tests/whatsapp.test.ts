@@ -259,6 +259,7 @@ import { generateKeyPairSync, createHash as hash } from "node:crypto";
 import {
   folderIdFromUrl,
   ensureCaseFolder,
+  syncCaseFolderName,
   uploadFile,
   type DriveConfig,
 } from "../lib/drive";
@@ -633,4 +634,45 @@ test("processCaseFolders creates the case folder named with name and CI, or keep
 test("explains the development-mode recipient error", async () => {
   const { explainError } = await import("../lib/whatsapp");
   assert.match(explainError(131030), /lista de destinatarios permitidos/);
+});
+
+test("syncCaseFolderName renames only CRM folders that still have the placeholder name", async () => {
+  const caseId = "a1b2c3d4-0000-4000-8000-000000000001";
+  const folder = (name: string, tag = caseId) =>
+    fakeGoogle([
+      (c) =>
+        c.init?.method === "GET" && c.url.includes("/files/CASEFOLDER123?")
+          ? new Response(
+              JSON.stringify({ name, appProperties: { crm_case: tag } }),
+            )
+          : undefined,
+      (c) =>
+        c.init?.method === "PATCH" && c.url.includes("/files/CASEFOLDER123?")
+          ? new Response(JSON.stringify({ id: "CASEFOLDER123" }))
+          : undefined,
+    ]);
+  const wanted = "Bruno Ficticio · CI 2.345.678-9";
+  const renamed = folder("Bruno Ficticio · Solicitud a1b2c3d4");
+  assert.equal(
+    await syncCaseFolderName(drive, "CASEFOLDER123", caseId, wanted, renamed.f),
+    true,
+  );
+  const patch = renamed.calls.find((c) => c.init?.method === "PATCH")!;
+  assert.deepEqual(JSON.parse(String(patch.init!.body)), { name: wanted });
+  assert.match(patch.url, /supportsAllDrives=true/);
+  // A folder renamed by hand, another case's folder, or a name still without CI are left alone.
+  for (const [g, name] of [
+    [folder("Bruno - carpeta del equipo"), wanted],
+    [folder("Bruno Ficticio · Solicitud a1b2c3d4", "otro-caso"), wanted],
+    [
+      folder("Bruno Ficticio · Solicitud a1b2c3d4"),
+      "Bruno Ficticio · Solicitud a1b2c3d4",
+    ],
+  ] as const) {
+    assert.equal(
+      await syncCaseFolderName(drive, "CASEFOLDER123", caseId, name, g.f),
+      false,
+    );
+    assert.equal(g.calls.filter((c) => c.init?.method === "PATCH").length, 0);
+  }
 });

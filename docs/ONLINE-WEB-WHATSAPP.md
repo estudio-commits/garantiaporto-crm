@@ -9,7 +9,7 @@ La opción recomendada es **Vercel para el CRM + Supabase para usuarios y base d
 | Componente | Para qué sirve | Configuración necesaria |
 | --- | --- | --- |
 | Hosting de Next.js | Publica el panel y el receptor de eventos | Conectar repositorio y rama elegida; Node 24 usado en pruebas; `npm ci`, `npm run build`, `npm run start` en servidor propio |
-| Supabase PostgreSQL y Auth | Guarda información compartida y autentica al equipo | Proyectos separados de pruebas/producción; ejecutar migraciones 001 a 014 en orden; backups y restauración probados |
+| Supabase PostgreSQL y Auth | Guarda información compartida y autentica al equipo | Proyectos separados de pruebas/producción; ejecutar migraciones 001 a 015 en orden; backups y restauración probados |
 | Dominio y HTTPS | Acceso desde cualquier equipo | DNS del subdominio y certificado; URL final exacta en Auth y recuperación de contraseña |
 | Correo transaccional | Recuperación de acceso | SMTP propio; dominio verificado; probar recuperación de una cuenta ficticia |
 | Administración | Gestiona accesos | Crear el primer usuario en Supabase Auth y su perfil admin con procedimiento restringido; desactivar registro público; después altas desde Equipo |
