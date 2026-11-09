@@ -70,12 +70,10 @@ export async function POST(req: Request) {
       { status: 500 },
     );
   }
-  await db
-    .from("audit_log")
-    .insert({
-      actor_id: user.id,
-      action: "user_created",
-      changes: { user_id: created.data.user.id, role },
-    });
+  await db.from("audit_log").insert({
+    actor_id: user.id,
+    action: "user_created",
+    changes: { user_id: created.data.user.id, role },
+  });
   return Response.json({ id: created.data.user.id }, { status: 201 });
 }

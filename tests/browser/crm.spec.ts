@@ -320,6 +320,19 @@ test("mobile preview, source management and disabled integration", async ({
   ).toBeTruthy();
   await page.keyboard.press("Escape");
   await expect(page.getByRole("dialog")).toHaveCount(0);
+  await nav(page, "Integraciones").click();
+  await expect(
+    page.getByRole("heading", { name: "Estado de las conexiones" }),
+  ).toBeVisible();
+  await expect(page.getByLabel("Formulario web")).toContainText(
+    "Demostración",
+  );
+  await expect(page.getByText(/pendiente/i)).toHaveCount(0);
+  expect(
+    await page.evaluate(
+      () => document.documentElement.scrollWidth <= innerWidth,
+    ),
+  ).toBeTruthy();
   expect(
     (await request.post("/api/integration/events", { data: {} })).status(),
   ).toBe(503);
@@ -531,4 +544,49 @@ test("finalizing a pending guarantee schedules follow-up and due cards rise abov
   await expect(preview.getByLabel("Fecha de seguimiento")).toHaveValue("");
   await preview.getByRole("button", { name: "Cerrar vista previa" }).click();
   await expect(card.locator(".followup-chip")).toHaveCount(0);
+});
+test("WhatsApp inbox opens the case conversation, sends inside the window and offers a template outside it", async ({
+  page,
+}) => {
+  await page.goto("/");
+  await expect(nav(page, "WhatsApp")).toBeVisible();
+  await expect(page.locator("nav").getByLabel("mensajes sin leer")).toHaveText(
+    "1",
+  );
+  await nav(page, "WhatsApp").click();
+  await page
+    .getByRole("button", { name: "Abrir conversación con Bruno Demostración" })
+    .click();
+  const panel = page.getByRole("region", { name: "Conversación de WhatsApp" });
+  await expect(panel).toContainText("Perfecto, quedo atento.");
+  const document = panel.getByRole("article", {
+    name: "Cliente: recibo_sueldo_octubre.pdf",
+  });
+  await expect(document).toContainText("Guardado en la carpeta del caso");
+  await expect(
+    document.getByRole("link", { name: "Ver en Drive" }),
+  ).toHaveAttribute("href", /^https:\/\/drive\.google\.com\//);
+  await expect(panel).toContainText("Ventana abierta hasta");
+  await panel
+    .getByLabel("Mensaje de WhatsApp")
+    .fill("Te envío la lista ahora.");
+  await panel.getByRole("button", { name: "Enviar" }).click();
+  await expect(
+    panel.getByRole("article", { name: "Equipo: Te envío la lista ahora." }),
+  ).toContainText("Enviado");
+  await expect(page.locator("nav").getByLabel("mensajes sin leer")).toHaveCount(
+    0,
+    { timeout: 20000 },
+  );
+  await page.getByRole("button", { name: "Volver a solicitudes" }).click();
+  await nav(page, "WhatsApp").click();
+  await page
+    .getByRole("button", { name: "Abrir conversación con Valentina Ejemplo" })
+    .click();
+  await expect(panel).toContainText("Ventana cerrada: solo plantilla");
+  await expect(panel.getByLabel("Mensaje de WhatsApp")).toHaveCount(0);
+  await panel
+    .getByRole("button", { name: "Enviar plantilla para retomar" })
+    .click();
+  await expect(panel).toContainText("Plantilla: retomar_conversacion");
 });

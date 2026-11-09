@@ -26,6 +26,7 @@ import {
   X,
   Download,
   RefreshCw,
+  MessageCircle,
 } from "lucide-react";
 import { supabase } from "@/lib/supabase";
 import UserCreator from "./user-creator";
@@ -46,6 +47,8 @@ import SourceManager from "./source-manager";
 import Statistics from "./statistics";
 import FollowUp from "./follow-up";
 import CommentForm from "./comment-form";
+import { WhatsAppInbox, useWhatsAppUnread } from "./whatsapp";
+import Integrations from "./integrations";
 import { sourceName, upgradeStore } from "@/lib/sources";
 import { seed, adminId } from "@/lib/demo";
 import {
@@ -81,6 +84,12 @@ const tables: Record<keyof Store, string> = {
   fields: "custom_field_definitions",
   values: "custom_field_values",
 };
+// Since migration 011 client roles can read every applications column except the
+// web continuation identifier (external_id) and contact_id, so `select *` would fail.
+const APPLICATION_COLUMNS: string =
+  "id,full_name,phone,rent_amount,rent_currency,guarantee_type,source,assigned_user_id,created_at,updated_at,completion,contact_status,first_contact_at,first_contact_by,stage,preapproval,documentation,decision,decision_date,decision_reference,summary,archived,attribution,source_id,guarantee_stage,requested_date,drive_folder_url,national_id,issued_date,issued_reference,decision_date_unknown,issued_reference_unknown,follow_up_date";
+const columnsFor = (k: keyof Store) =>
+  k === "applications" ? APPLICATION_COLUMNS : "*";
 const date = (s: string) =>
   new Intl.DateTimeFormat("es-UY", {
     day: "2-digit",
@@ -136,7 +145,8 @@ export default function CRM() {
     [modal, setModal] = useState<"lead" | "field" | null>(null),
     [message, setMessage] = useState(""),
     [busy, setBusy] = useState(false),
-    [integration, setIntegration] = useState<Record<string, unknown>[]>([]);
+    [caseTab, setCaseTab] = useState<string | undefined>(undefined);
+  const waUnread = useWhatsAppUnread(demo, !!profile);
   useEffect(() => {
     const timer = setInterval(() => setNow(Date.now()), 60000);
     return () => clearInterval(timer);
@@ -173,7 +183,10 @@ export default function CRM() {
           ? "application_id"
           : "id";
         for (let offset = 0; ; offset += 500) {
-          let query = supabase!.from(tables[k]).select("*").order(orderKey);
+          let query = supabase!
+            .from(tables[k])
+            .select(columnsFor(k))
+            .order(orderKey);
           if (k === "values") query = query.order("field_id");
           const r = await query.range(offset, offset + 499);
           if (r.error) throw Error(r.error.message);
@@ -254,14 +267,17 @@ export default function CRM() {
             ? await q.insert(value)
             : mode === "upsert"
               ? await q.upsert(value)
-              : await q.update(value).eq(match, value[match]).select();
+              : await q
+                  .update(value)
+                  .eq(match, value[match])
+                  .select(columnsFor(k));
         if (r.error) throw Error(r.error.message);
         if (mode === "update" && (!r.data || r.data.length === 0))
           throw Error(
             "No se pudo guardar: el registro ya no está disponible o no tenés permiso.",
           );
         if (k === "applications" && mode === "update" && r.data) {
-          const confirmed = r.data as Application[];
+          const confirmed = r.data as unknown as Application[];
           setStore((previous) => ({
             ...previous,
             applications: previous.applications.map(
@@ -446,6 +462,16 @@ export default function CRM() {
     setOwner("todos");
     setGuaranteeFilter("todos");
   };
+  // Asks the server to create the new case's Drive folder now instead of waiting for the cron.
+  async function requestCaseFolder() {
+    const {
+      data: { session },
+    } = await supabase!.auth.getSession();
+    await fetch("/api/drive/case-folders", {
+      method: "POST",
+      headers: { authorization: `Bearer ${session?.access_token}` },
+    }).catch(() => undefined);
+  }
   async function addLead(e: FormEvent<HTMLFormElement>) {
     e.preventDefault();
     const f = new FormData(e.currentTarget);
@@ -482,6 +508,8 @@ export default function CRM() {
       attribution: {},
     };
     if (await mutate("applications", a, "insert")) {
+      if (supabase)
+        void requestCaseFolder().then(() => load().catch(() => undefined));
       setModal(null);
       setSelected(a.id);
     }
@@ -531,6 +559,7 @@ export default function CRM() {
             ["Pipeline", Columns3],
             ["Lista de clientes", Inbox],
             ["Estadísticas", Activity],
+            ["WhatsApp", MessageCircle],
             ...(isAdmin
               ? [
                   ["Equipo", Users],
@@ -551,6 +580,11 @@ export default function CRM() {
                 {String(name)}
                 {name === "Lista de clientes" && (
                   <span className="nav-count">{active.length}</span>
+                )}
+                {name === "WhatsApp" && waUnread > 0 && (
+                  <span className="nav-count" aria-label="mensajes sin leer">
+                    {waUnread}
+                  </span>
                 )}
               </button>
             );
@@ -635,9 +669,13 @@ export default function CRM() {
               profile={profile}
               busy={busy}
               mutate={mutate}
-              back={() => setSelected(null)}
+              back={() => {
+                setSelected(null);
+                setCaseTab(undefined);
+              }}
               guarantee={changeGuarantee}
               now={now}
+              initialTab={caseTab}
             />
           ) : (
             <>
@@ -652,11 +690,13 @@ export default function CRM() {
                           ? "Seguí cada oportunidad a lo largo del proceso comercial."
                           : page === "Estadísticas"
                             ? "Orígenes, resultados y seguimiento del equipo."
-                            : page === "Control de datos"
-                              ? "Administrá los orígenes y los campos de tus solicitudes."
-                              : page === "Equipo"
-                                ? "Administrá accesos y responsabilidades."
-                                : "Seguimiento de la recepción de formularios."}
+                            : page === "WhatsApp"
+                              ? "Conversaciones con clientes, respondidas desde el CRM."
+                              : page === "Control de datos"
+                                ? "Administrá los orígenes y los campos de tus solicitudes."
+                                : page === "Equipo"
+                                  ? "Administrá accesos y responsabilidades."
+                                  : "Conexiones del CRM y mensajes automáticos de WhatsApp."}
                     </p>
                   </div>
                   {page === "Pipeline" && (
@@ -807,6 +847,16 @@ export default function CRM() {
                     </section>
                   </div>
                 </>
+              )}
+              {page === "WhatsApp" && (
+                <WhatsAppInbox
+                  applications={allowed}
+                  demo={demo}
+                  open={(id) => {
+                    setCaseTab("WhatsApp");
+                    setSelected(id);
+                  }}
+                />
               )}
               {page === "Estadísticas" && (
                 <Statistics
@@ -1193,47 +1243,7 @@ export default function CRM() {
                 </section>
               )}
               {page === "Integraciones" && isAdmin && (
-                <section className="card padded">
-                  <span className="badge parte_1_recibida">
-                    Conexión con la web pendiente
-                  </span>
-                  <h2>Recepción de eventos</h2>
-                  <p>
-                    El receptor está implementado y deshabilitado por defecto.
-                    La web, sus correos y Google Ads permanecen sin cambios.
-                  </p>
-                  <p className="muted">
-                    Los eventos de prueba se envían con firma al endpoint
-                    /api/integration/events. Ver docs/INTEGRATION.md.
-                  </p>
-                  <button
-                    className="secondary"
-                    onClick={async () => {
-                      if (!supabase) {
-                        setMessage(
-                          "La demo no recibe eventos externos. Usá el simulador documentado contra un backend de pruebas.",
-                        );
-                        return;
-                      }
-                      const r = await supabase
-                        .from("integration_attempts")
-                        .select("id,status,code,created_at")
-                        .order("created_at", { ascending: false })
-                        .limit(50);
-                      if (r.error) setMessage(r.error.message);
-                      else setIntegration(r.data || []);
-                    }}
-                  >
-                    <RefreshCw size={16} />
-                    Consultar entregas
-                  </button>
-                  {integration.map((r, i) => (
-                    <div className="team-row" key={i}>
-                      {String(r.status)} · {String(r.code || "OK")} ·{" "}
-                      {date(String(r.created_at))}
-                    </div>
-                  ))}
-                </section>
+                <Integrations demo={demo} />
               )}
             </>
           )}

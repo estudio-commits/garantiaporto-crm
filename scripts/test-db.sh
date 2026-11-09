@@ -15,3 +15,4 @@ for migration in supabase/migrations/*.sql; do
  if [[ "$migration" == *006_separate_workflows.sql ]]; then docker exec -i "$container" psql -U postgres -v ON_ERROR_STOP=1 < tests/upgrade-after.sql; fi
 done
 docker exec -i "$container" psql -U postgres -v ON_ERROR_STOP=1 < tests/database.sql
+docker exec -i "$container" psql -U postgres -v ON_ERROR_STOP=1 < tests/whatsapp.sql

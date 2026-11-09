@@ -19,7 +19,7 @@ do $$begin
 
  update applications set guarantee_stage='preaprobacion_cargada',source_id='40000000-0000-4000-8000-000000000002' where id='10000000-0000-4000-8000-000000000001';
  if (select decision from applications where id='10000000-0000-4000-8000-000000000001')<>'no_presentada' then raise exception 'Pipeline altered formal decision';end if;
- if (select count(*) from client_sources)<>2 then raise exception 'Seller cannot read origins';end if;
+ if (select count(*) from client_sources where id in('40000000-0000-4000-8000-000000000001','40000000-0000-4000-8000-000000000002'))<>2 then raise exception 'Seller cannot read origins';end if;
  begin insert into client_sources(name) values('Forbidden seller origin');raise exception 'Seller can create origin';exception when insufficient_privilege then null;end;
  update client_sources set name='Forbidden rename' where id='40000000-0000-4000-8000-000000000002';if found then raise exception 'Seller can rename origin';end if;
 
@@ -142,6 +142,31 @@ set local role authenticated;
 update applications set issued_date=null,issued_reference=null where id='10000000-0000-4000-8000-000000000001';
 do $$begin if not exists(select 1 from audit_log where changes->'issued_reference'->>'before'='POLIZA-FICTICIA' and changes->'issued_reference'->'after'='null'::jsonb) then raise exception 'Cancellation audit missing';end if;end $$;
 reset role;
+-- Migration 011: insert-guard parity and hidden continuation identifier.
+set local request.jwt.claim.sub='00000000-0000-4000-8000-000000000002';
+set local role authenticated;
+do $$begin
+ begin insert into applications(full_name,phone,national_id,assigned_user_id,attribution) values('Atribución forjada','000','0.000.000-0',auth.uid(),'{"utm_source":"x"}');raise exception 'Seller forged attribution';exception when raise_exception then if sqlerrm='Seller forged attribution' then raise;end if;end;
+ begin insert into applications(full_name,phone,national_id,assigned_user_id,decision_reference) values('Decisión forjada','000','0.000.000-0',auth.uid(),'REF-FICTICIA');raise exception 'Seller forged decision evidence';exception when raise_exception then if sqlerrm='Seller forged decision evidence' then raise;end if;end;
+ begin perform external_id from applications limit 1;raise exception 'Seller reads external_id';exception when insufficient_privilege then null;end;
+ begin perform contact_id from applications limit 1;raise exception 'Seller reads contact_id';exception when insufficient_privilege then null;end;
+ if (select count(*) from applications)<1 then raise exception 'Column grants hid seller rows';end if;
+end $$;
+reset role;
+do $$declare e jsonb; r jsonb; aid uuid;begin
+ if exists(select 1 from audit_log where changes ? 'external_id' or changes ? 'contact_id') then raise exception 'Continuation id copied to audit';end if;
+ e=jsonb_build_object('schema_version',1,'event_id',gen_random_uuid(),'solicitud_id',gen_random_uuid(),'step',1,'sent_at',now(),'data',jsonb_build_object('full_name','Cuarentena ficticia','phone','000'));
+ r=ingest_event(e);aid=(r->>'application_id')::uuid;
+ update applications set archived=true where id=aid;
+ e=jsonb_set(jsonb_set(jsonb_set(e,'{event_id}',to_jsonb(gen_random_uuid())),'{step}','2'),'{data,monthly_income}','999999');
+ e=jsonb_set(e,'{data,national_id}','"0.000.000-0"');
+ r=ingest_event(e);
+ if not (r->>'quarantined')::boolean then raise exception 'Archived case not quarantined';end if;
+ if exists(select 1 from application_sensitive where application_id=aid) then raise exception 'Quarantined event wrote sensitive data';end if;
+ if (select completion from applications where id=aid)<>'parte_1_recibida' or (select national_id from applications where id=aid) is not null then raise exception 'Quarantined event modified case';end if;
+ if not exists(select 1 from form_events where application_id=aid and quarantined and discrepancy) then raise exception 'Quarantined event not kept';end if;
+ if exists(select 1 from audit_log where application_id=aid and action='form_event' and (changes->>'quarantined')::boolean and visibility<>'admin') then raise exception 'Quarantine audit visible to case';end if;
+end $$;
 update profiles set active=false where id='00000000-0000-4000-8000-000000000002';
 set local role authenticated;
 set local request.jwt.claim.sub='00000000-0000-4000-8000-000000000002';
