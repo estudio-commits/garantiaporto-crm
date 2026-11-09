@@ -192,7 +192,8 @@ export function transcript(
 ): Anthropic.Beta.BetaMessageParam[] {
   const out: Anthropic.Beta.BetaMessageParam[] = [];
   for (const m of messages) {
-    let text = m.body?.trim() || "";
+    // Long messages are cut to keep each request small and the cost predictable.
+    let text = (m.body?.trim() || "").slice(0, 1500);
     if (m.kind === "template")
       text = `[Se envió el mensaje automático de saludo de Garantía Porto]`;
     else if (m.media)

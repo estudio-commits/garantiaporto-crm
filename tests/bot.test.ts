@@ -426,3 +426,21 @@ test("does not answer when inactive, paused, outside the test list or without a 
     "sin clave de Anthropic",
   );
 });
+
+test("very long customer messages are truncated before reaching the model", () => {
+  const msgs = transcript(
+    [
+      {
+        direction: "in",
+        author: "customer",
+        kind: "text",
+        body: "a".repeat(5000),
+        media: null,
+        media_status: null,
+        created_at: "1",
+      },
+    ],
+    "Lucía",
+  );
+  assert.equal(String(msgs[0].content).length, 1500);
+});
