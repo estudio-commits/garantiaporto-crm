@@ -290,6 +290,8 @@ export function explainError(code?: number, fallback = "") {
   const known: Record<number, string> = {
     131047:
       "Pasaron más de 24 h desde el último mensaje del cliente: hay que enviar una plantilla.",
+    131030:
+      "El número no está en la lista de destinatarios permitidos: agregalo en Meta (Configuración de la API) o pasá la app a modo activo.",
     131026:
       "WhatsApp no pudo entregar el mensaje (número sin WhatsApp o bloqueado).",
     131051: "Tipo de mensaje no admitido.",

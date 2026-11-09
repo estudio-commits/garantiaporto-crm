@@ -629,3 +629,8 @@ test("processCaseFolders creates the case folder named with name and CI, or keep
     "Ana Ficticia · CI 1.234.567-8",
   );
 });
+
+test("explains the development-mode recipient error", async () => {
+  const { explainError } = await import("../lib/whatsapp");
+  assert.match(explainError(131030), /lista de destinatarios permitidos/);
+});
