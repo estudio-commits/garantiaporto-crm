@@ -1,5 +1,6 @@
 import { driveConfig } from "@/lib/drive";
 import {
+  processCaseFolders,
   processMedia,
   processOutbox,
   safeEqual,
@@ -18,7 +19,12 @@ export async function GET(req: Request) {
     return Response.json({ error: "Unauthorized" }, { status: 401 });
   const cfg = waConfig();
   const db = serviceClient();
-  if (!cfg.enabled || !db) return Response.json({ skipped: "disabled" });
+  if (!db) return Response.json({ skipped: "disabled" });
+  const folders = await processCaseFolders(db, driveConfig(), 20).catch(
+    () => null,
+  );
+  if (!cfg.enabled)
+    return Response.json({ skipped: "whatsapp disabled", folders });
   let total = { claimed: 0, sent: 0, failed: 0 };
   // Drain in small batches within the function time budget.
   for (let i = 0; i < 5; i++) {
@@ -31,5 +37,5 @@ export async function GET(req: Request) {
     if (r.claimed < 20) break;
   }
   const media = await processMedia(db, cfg, driveConfig(), 10);
-  return Response.json({ ...total, media });
+  return Response.json({ ...total, media, folders });
 }

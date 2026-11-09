@@ -135,7 +135,7 @@ En la app de Meta → WhatsApp → Configuración → **Webhook**:
 
 Cuando el cliente manda un **PDF, una imagen o un Word** (hasta 20 MB) por WhatsApp, el CRM lo descarga de Meta y lo guarda en la **carpeta del caso**:
 
-- Si el caso no tiene carpeta, la crea dentro de la carpeta principal con el nombre "Nombre · CI · fecha de ingreso" y guarda el enlace en la ficha.
+- **Cada caso nuevo tiene su carpeta desde que entra al CRM** (formulario web, WhatsApp o carga manual). Se crea en la carpeta principal (Clientes garantiaporto.com.uy → Solicitudes) con el nombre "Nombre Apellido · CI 1.234.567-8", o "Nombre Apellido · Solicitud xxxxxxxx" si todavía no hay CI. El enlace queda en la ficha. Si un documento llega antes de que exista la carpeta, se crea en ese momento.
 - En el chat aparece "Guardado en la carpeta del caso" con el enlace **Ver en Drive**.
 - Si falla, aparece el motivo y un botón **Reintentar**.
 - Los audios, videos y stickers quedan solo en el chat.

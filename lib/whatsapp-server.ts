@@ -3,6 +3,7 @@
 import { createHash, createHmac, timingSafeEqual } from "node:crypto";
 import { createClient, type SupabaseClient } from "@supabase/supabase-js";
 import { whatsappNumber } from "./phone";
+import { formatCI } from "./workflow";
 import {
   explainError,
   messagePayload,
@@ -324,14 +325,16 @@ const safeName = (s: string) =>
     .replace(/\s+/g, " ")
     .trim();
 
+/** "Nombre Apellido · CI 1.234.567-8", or the short case id while the CI is still unknown. */
 export function caseFolderName(c: {
+  id: string;
   full_name: string;
   national_id: string | null;
-  phone: string;
-  created_at: string;
 }) {
-  const ci = c.national_id ? `CI ${c.national_id}` : c.phone;
-  return safeName(`${c.full_name} · ${ci} · ${c.created_at.slice(0, 10)}`);
+  const id = c.national_id
+    ? `CI ${formatCI(c.national_id)}`
+    : `Solicitud ${c.id.slice(0, 8)}`;
+  return safeName(`${c.full_name} · ${id}`);
 }
 
 export function mediaFileName(
@@ -404,7 +407,7 @@ export async function processMedia(
           folder = await ensureCaseFolder(
             drive,
             row.application_id,
-            caseFolderName(c),
+            caseFolderName({ ...c, id: row.application_id }),
             fetcher,
           );
           newFolderUrl = folderUrl(folder);
@@ -439,4 +442,54 @@ export async function processMedia(
     else failed++;
   }
   return { claimed: rows.length, stored, failed };
+}
+
+/** Creates the shared-drive folder of each newly created case and stores its link in the case. */
+export async function processCaseFolders(
+  db: SupabaseClient,
+  drive: DriveConfig,
+  limit = 5,
+  fetcher: typeof fetch = fetch,
+) {
+  if (!drive.enabled) return { claimed: 0, created: 0, failed: 0 };
+  const claimed = await db.rpc("claim_case_folders", { n: limit });
+  if (claimed.error) throw Error(claimed.error.message);
+  const rows = (claimed.data ?? []) as {
+    application_id: string;
+    full_name: string;
+    national_id: string | null;
+    drive_folder_url: string | null;
+  }[];
+  let created = 0,
+    failed = 0;
+  for (const row of rows) {
+    let url: string | null = null,
+      error: string | null = null,
+      retry = false;
+    try {
+      url = folderIdFromUrl(row.drive_folder_url)
+        ? row.drive_folder_url
+        : folderUrl(
+            await ensureCaseFolder(
+              drive,
+              row.application_id,
+              caseFolderName({ ...row, id: row.application_id }),
+              fetcher,
+            ),
+          );
+    } catch (e) {
+      error = e instanceof Error ? e.message : "Error al crear la carpeta.";
+      retry = e instanceof DriveError ? e.retry : true;
+    }
+    const done = await db.rpc("complete_case_folder", {
+      p_application: row.application_id,
+      p_folder_url: url,
+      p_error: error,
+      p_retry: retry,
+    });
+    if (done.error) throw Error(done.error.message);
+    if (url) created++;
+    else failed++;
+  }
+  return { claimed: rows.length, created, failed };
 }

@@ -462,6 +462,16 @@ export default function CRM() {
     setOwner("todos");
     setGuaranteeFilter("todos");
   };
+  // Asks the server to create the new case's Drive folder now instead of waiting for the cron.
+  async function requestCaseFolder() {
+    const {
+      data: { session },
+    } = await supabase!.auth.getSession();
+    await fetch("/api/drive/case-folders", {
+      method: "POST",
+      headers: { authorization: `Bearer ${session?.access_token}` },
+    }).catch(() => undefined);
+  }
   async function addLead(e: FormEvent<HTMLFormElement>) {
     e.preventDefault();
     const f = new FormData(e.currentTarget);
@@ -498,6 +508,8 @@ export default function CRM() {
       attribution: {},
     };
     if (await mutate("applications", a, "insert")) {
+      if (supabase)
+        void requestCaseFolder().then(() => load().catch(() => undefined));
       setModal(null);
       setSelected(a.id);
     }

@@ -130,5 +130,27 @@ do $$begin
  if (select auto_reply_text from wa_settings)<>'Texto ficticio de prueba' then raise exception 'Admin cannot edit settings';end if;
 end $$;
 reset role;
+-- New cases queue their Drive folder; completion stores the link once and never overwrites it.
+do $$declare aid uuid; n int; begin
+ insert into applications(full_name,phone,national_id) values('Carpeta Ficticia','099 000 010','1234567-8') returning id into aid;
+ if not exists(select 1 from drive_folder_queue where application_id=aid and status='pending') then raise exception 'Case folder not queued';end if;
+ select count(*) into n from claim_case_folders(20) where application_id=aid and national_id='12345678';
+ if n<>1 then raise exception 'Case folder not claimed';end if;
+ perform complete_case_folder(aid,null,'Error temporal de Drive',true);
+ if (select status from drive_folder_queue where application_id=aid)<>'pending' then raise exception 'Folder retry not scheduled';end if;
+ update drive_folder_queue set next_at=now()-interval '1 minute' where application_id=aid;
+ perform claim_case_folders(20);
+ perform complete_case_folder(aid,'https://drive.google.com/drive/folders/CASEFOLDER123',null,false);
+ if (select drive_folder_url from applications where id=aid)<>'https://drive.google.com/drive/folders/CASEFOLDER123' or (select status from drive_folder_queue where application_id=aid)<>'done' then raise exception 'Case folder not stored';end if;
+ insert into applications(full_name,phone,national_id,drive_folder_url) values('Con Carpeta','099 000 011','1234567-8','https://drive.google.com/drive/folders/MANUAL123456') returning id into aid;
+ if exists(select 1 from drive_folder_queue where application_id=aid) then raise exception 'Folder queued for case with folder';end if;
+end $$;
+set local request.jwt.claim.sub='00000000-0000-4000-8000-0000000000a2';
+set local role authenticated;
+do $$begin
+ if exists(select 1 from drive_folder_queue) then raise exception 'Seller reads folder queue';end if;
+ begin perform claim_case_folders(1);raise exception 'Seller claimed folders';exception when insufficient_privilege then null;end;
+end $$;
+reset role;
 rollback;
 \echo 'WhatsApp checks passed'

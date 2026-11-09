@@ -2,6 +2,7 @@ import { after } from "next/server";
 import { parseWebhook } from "@/lib/whatsapp";
 import { driveConfig } from "@/lib/drive";
 import {
+  processCaseFolders,
   processMedia,
   processOutbox,
   readLimited,
@@ -76,6 +77,7 @@ export async function POST(req: Request) {
   if (messages.length)
     after(async () => {
       await processOutbox(db, cfg, 10).catch(() => undefined);
+      await processCaseFolders(db, driveConfig(), 5).catch(() => undefined);
       await processMedia(db, cfg, driveConfig(), 5).catch(() => undefined);
     });
   return Response.json({ ok: true });

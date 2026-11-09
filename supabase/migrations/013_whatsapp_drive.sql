@@ -61,4 +61,55 @@ end $$;
 revoke all on function public.wa_mark_media(),public.wa_claim_media(int),public.wa_media_case(uuid),public.wa_complete_media(uuid,text,text,text,text,text,boolean),public.wa_retry_media(uuid) from public,anon,authenticated;
 grant execute on function public.wa_claim_media(int),public.wa_media_case(uuid),public.wa_complete_media(uuid,text,text,text,text,text,boolean) to service_role;
 grant execute on function public.wa_retry_media(uuid) to authenticated;
+-- Every new case gets its own folder in the shared drive (Clientes garantiaporto.com.uy / Solicitudes),
+-- created by the server shortly after the case enters the CRM.
+create table public.drive_folder_queue(
+ application_id uuid primary key references public.applications(id),
+ status text not null default 'pending' check(status in('pending','processing','done','failed')),
+ attempts int not null default 0,
+ next_at timestamptz not null default now(),
+ error text check(length(error)<=500),
+ created_at timestamptz not null default now()
+);
+alter table public.drive_folder_queue enable row level security;
+revoke all on public.drive_folder_queue from public,anon,authenticated;
+grant select on public.drive_folder_queue to authenticated;
+grant select,insert,update on public.drive_folder_queue to service_role;
+create policy drive_folder_queue_admin on public.drive_folder_queue for select to authenticated using(is_admin());
+
+create or replace function public.enqueue_case_folder() returns trigger language plpgsql security definer set search_path=public as $$
+begin
+ if new.drive_folder_url is null then
+  insert into drive_folder_queue(application_id) values(new.id) on conflict do nothing;
+ end if;
+ return new;
+end $$;
+create trigger zz_case_folder after insert on public.applications for each row execute function public.enqueue_case_folder();
+
+create or replace function public.claim_case_folders(n int) returns table(application_id uuid,full_name text,national_id text,phone text,created_at timestamptz,drive_folder_url text) language sql security definer set search_path=public as $$
+ with c as(
+  update drive_folder_queue q set status='processing',attempts=q.attempts+1,next_at=now()
+  where q.application_id in(select x.application_id from drive_folder_queue x where (x.status='pending' and x.next_at<=now()) or (x.status='processing' and x.next_at<=now()-interval '10 minutes')
+   order by x.created_at for update skip locked limit greatest(1,least(n,20)))
+  returning q.application_id)
+ select a.id,a.full_name,a.national_id,a.phone,a.created_at,a.drive_folder_url from applications a join c on c.application_id=a.id;
+$$;
+
+create or replace function public.complete_case_folder(p_application uuid,p_folder_url text,p_error text,p_retry boolean) returns void language plpgsql security definer set search_path=public as $$
+declare q drive_folder_queue;
+begin
+ select * into q from drive_folder_queue where application_id=p_application for update;
+ if not found or q.status<>'processing' then return; end if;
+ if p_folder_url is not null then
+  update applications set drive_folder_url=p_folder_url where id=p_application and drive_folder_url is null;
+  update drive_folder_queue set status='done',error=null where application_id=p_application;
+ elsif p_retry and q.attempts<6 then
+  update drive_folder_queue set status='pending',error=left(p_error,500),next_at=now()+make_interval(mins=>power(2,q.attempts)::int) where application_id=p_application;
+ else
+  update drive_folder_queue set status='failed',error=left(p_error,500) where application_id=p_application;
+ end if;
+end $$;
+
+revoke all on function public.enqueue_case_folder(),public.claim_case_folders(int),public.complete_case_folder(uuid,text,text,boolean) from public,anon,authenticated;
+grant execute on function public.claim_case_folders(int),public.complete_case_folder(uuid,text,text,boolean) to service_role;
 commit;

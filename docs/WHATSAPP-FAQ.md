@@ -1,14 +1,14 @@
-# Asistente de WhatsApp — preguntas frecuentes y documentos (BORRADOR para aprobar)
+# Asistente de WhatsApp — preguntas frecuentes y documentos
 
-> **Estado: borrador.** El asistente solo va a usar respuestas aprobadas por Garantía Porto.
-> Las marcas **[COMPLETAR]** indican datos del negocio que no figuran en el proyecto y no se inventaron.
-> Ante cualquier pregunta que no esté acá, el asistente deriva a una persona.
+> **Estado: aprobado por Garantía Porto el 9/11/2026**, salvo los puntos marcados **[CONFIRMAR]**.
+> El asistente solo usa estas respuestas. Ante cualquier pregunta que no esté acá, deriva a una persona.
 
 ## Atención humana
 
 - **Responsable:** Lucía Ussumorel.
-- **Horario:** 09:00 a 17:00. **[COMPLETAR: días — ¿lunes a viernes? ¿feriados?]**
-- **Fuera de horario**, el asistente avisa: "Lucía te va a responder a partir de las 09:00 del próximo día hábil."
+- **Horario:** 09:00 a 17:00.
+- **Días:** Lunes a Viernes.
+- **Fuera de horario**, el asistente avisa: "Nuestro horario de atención es de 09:00 a 17:00, de Lunes a Viernes. Lucía se pondrá en contacto contigo cuanto antes."
 
 ## Documentos según tu situación de ingresos
 
@@ -44,47 +44,44 @@ El asistente pregunta primero cuál es tu situación y después envía solo la l
 - Certificados vigentes de BPS y DGI.
 - Última declaración jurada presentada ante DGI (IRPF, IRAE o IMEBA).
 
-> **[CONFIRMAR]** En la lista de "Rentista" venía la línea **"Microempresas: 24 meses"**. ¿A qué se refiere? Por ejemplo, ¿un certificado de ingresos de los últimos 24 meses para microempresas? ¿Va en la lista 3? Por ahora no se incluye.
->
-> **[CONFIRMAR]** ¿La garantía **universitaria** pide los mismos documentos, de la persona que respalda al estudiante? ¿La **rural** pide algo distinto?
+> **[CONFIRMAR]** ¿La garantía **universitaria** pide los mismos documentos, de la persona que respalda al estudiante? ¿La **rural** pide algo distinto? Hasta confirmarlo, para universitaria y rural el asistente deriva a Lucía para la lista de documentos.
 
 ## Preguntas frecuentes (respuestas propuestas)
 
 **1. ¿Qué es la garantía de alquiler de Garantía Porto?**
-Es una garantía de alquiler respaldada por Porto Seguro que reemplaza al garante propietario. Te permite alquilar presentando la documentación de tus ingresos. **[COMPLETAR o corregir con la descripción oficial]**
+Es una garantía de alquiler respaldada por Porto Seguro que garantiza el cumplimiento de las obligaciones establecidas en el contrato. Te permite alquilar presentando la documentación de tus ingresos, sin necesidad de un depósito en garantía o un fiador solidario.
 
 **2. ¿Qué tipos de garantía tienen?**
-Garantía tradicional, universitaria y rural. **[COMPLETAR: una línea que explique cada una]**
+Garantía de Alquiler Tradicional, que aplica para vivienda o negocios, Garantía de Alquiler Universitaria, para estudiantes que no tienen ingresos declarados. Y rural, para el arrendamiento de campos.
 
 **3. ¿Qué documentos tengo que presentar?**
-Depende de tu situación de ingresos. ¿Sos empleado, jubilado o pensionista, profesional independiente o unipersonal, rentista, o se trata de una empresa? _(Con la respuesta, el asistente envía la lista correspondiente.)_
+Depende de tu situación laboral y cómo percibas tus ingresos. ¿Sos empleado, profesional independiente, jubilado/pensionista, rentista, o una empresa? _(Con la respuesta, el asistente envía la lista correspondiente.)_
 
 **4. ¿Cómo envío los documentos?**
-Por este mismo chat, como foto nítida o en PDF. Aceptamos PDF, imágenes (JPG, PNG) y Word, de hasta 20 MB cada uno. Se guardan directamente en la carpeta de tu solicitud.
+Por este mismo chat, como foto nítida o en PDF. Aceptamos archivos de hasta 20 MB cada uno.
 
-**5. ¿Es seguro mandar mis documentos por acá?**
-Sí. Se guardan en una carpeta privada de Garantía Porto a la que solo accede el equipo que gestiona tu solicitud. No compartas contraseñas ni datos de tarjetas por este chat.
+**5. ¿Cuánto cuesta la garantía?**
+El costo de la garantía depende del importe del alquiler, es un % de aproximadamente un 70%, y se puede financiar con tarjeta de crédito, sin recargo.
 
-**6. ¿Cuánto cuesta la garantía?**
-**[COMPLETAR: cómo se calcula o desde cuánto]**. Propuesta si prefieren no publicar precios: "El costo depende del monto del alquiler y del análisis de tu solicitud. Lucía te pasa la cotización exacta." _(y deriva)_
+> **[CONFIRMAR]** ¿El 70% es de **un mes de alquiler**, se paga **una vez por contrato** o **por año**? Hasta confirmarlo, el asistente no calcula montos: pide el valor del alquiler y deriva a Lucía para la cotización exacta. Si querés saber exacto cuánto va a ser el costo, decime cuál es el monto por el que tenés pensado alquilar.
 
 **7. ¿Cuánto demora la aprobación?**
-**[COMPLETAR: plazo habitual con la documentación completa]**. Propuesta: "Cuando tenemos toda la documentación, el análisis suele demorar **[X días hábiles]**. Te avisamos por este medio."
+Cuando tenemos toda la documentación, el análisis de crédito se hace en el momento prácticamente, y te avisamos por este medio. La emisión final, necesitamos del contrato e inventario para solicitarla, y puede hacerse en el momento también.
 
 **8. ¿Me pueden rechazar?**
-La aprobación depende del análisis de tu documentación. El asistente no puede adelantar el resultado. Si tenés dudas sobre tu caso, te comunico con Lucía. _(deriva)_
+La aprobación depende del análisis de tu documentación. No te puedo adelantar un resultado sin enviar tu documentación para el análisis.
 
 **9. ¿Qué pasa después de mandar los documentos?**
-El equipo los revisa. Si falta algo, te avisamos por acá; si está todo, seguimos con el análisis y te comunicamos el resultado.
+El equipo de Porto Seguro los revisa para ver si tu perfil aplica para la garantía. Si falta algo, te avisamos por acá. Y si está todo, seguimos con el análisis y te comunicamos el resultado.
 
 **10. ¿Dónde consigo la constancia de DGI y BPS?**
-Las podés descargar desde los servicios en línea de DGI y de BPS, o pedírselas a tu contador.
+Las podés descargar desde los servicios en línea de DGI y de BPS, o pedírselas a tu contador/a.
 
 **11. ¿Puedo cotizar o iniciar la solicitud por la web?**
-Sí, en garantiaporto.com.uy. **[CONFIRMAR enlace exacto del cotizador]**
+Sí, en garantiaporto.com.uy/cotizador.
 
 **12. ¿La garantía sirve para cualquier inmobiliaria o propietario?**
-**[COMPLETAR]**. Si no hay una respuesta estándar, el asistente deriva.
+Sí, la garantía se puede solicitar para cualquier propiedad administrada por su propietario, arrendador o inmobiliaria.
 
 **13. Quiero hablar con una persona.**
 ¡Claro! Te comunico con Lucía Ussumorel, que atiende de 09:00 a 17:00. _(deriva y el asistente deja de responder en esa conversación)_

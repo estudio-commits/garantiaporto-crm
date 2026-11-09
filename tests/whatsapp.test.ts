@@ -311,12 +311,19 @@ test("Drive folder URL parsing and naming", () => {
   assert.equal(folderIdFromUrl("https://evil.example/drive/folders/x"), null);
   assert.equal(
     caseFolderName({
+      id: "a1b2c3d4-0000-4000-8000-000000000001",
       full_name: "Ana/Ficticia",
       national_id: "12345678",
-      phone: "099",
-      created_at: "2026-11-07T12:00:00Z",
     }),
-    "Ana Ficticia · CI 12345678 · 2026-11-07",
+    "Ana Ficticia · CI 1.234.567-8",
+  );
+  assert.equal(
+    caseFolderName({
+      id: "a1b2c3d4-0000-4000-8000-000000000001",
+      full_name: "Bruno Ficticio",
+      national_id: null,
+    }),
+    "Bruno Ficticio · Solicitud a1b2c3d4",
   );
   assert.equal(
     mediaFileName(
@@ -561,4 +568,64 @@ test("processMedia files a document in a new case folder and records the link", 
     p_error: null,
     p_retry: false,
   });
+});
+
+test("processCaseFolders creates the case folder named with name and CI, or keeps an existing one", async () => {
+  const { processCaseFolders } = await import("../lib/whatsapp-server");
+  const google = fakeGoogle([
+    (c) =>
+      c.init?.method === "GET"
+        ? new Response(JSON.stringify({ files: [] }))
+        : undefined,
+    (c) =>
+      c.init?.method === "POST" &&
+      c.url.startsWith("https://www.googleapis.com/drive/v3/files?")
+        ? new Response(JSON.stringify({ id: "CASEFOLDER123" }))
+        : undefined,
+  ]);
+  const completed: Record<string, unknown>[] = [];
+  const db = {
+    rpc: async (fn: string, args: Record<string, unknown>) => {
+      if (fn === "claim_case_folders")
+        return {
+          data: [
+            {
+              application_id: "a1b2c3d4-0000-4000-8000-000000000001",
+              full_name: "Ana Ficticia",
+              national_id: "12345678",
+              drive_folder_url: null,
+            },
+            {
+              application_id: "b1b2c3d4-0000-4000-8000-000000000002",
+              full_name: "Con Carpeta",
+              national_id: null,
+              drive_folder_url:
+                "https://drive.google.com/drive/folders/MANUAL123456",
+            },
+          ],
+          error: null,
+        };
+      completed.push(args);
+      return { data: null, error: null };
+    },
+  };
+  const r = await processCaseFolders(db as never, drive, 5, google.f);
+  assert.deepEqual(r, { claimed: 2, created: 2, failed: 0 });
+  assert.equal(
+    completed[0].p_folder_url,
+    "https://drive.google.com/drive/folders/CASEFOLDER123",
+  );
+  assert.equal(
+    completed[1].p_folder_url,
+    "https://drive.google.com/drive/folders/MANUAL123456",
+  );
+  const create = google.calls.find(
+    (c) =>
+      c.init?.method === "POST" &&
+      c.url.startsWith("https://www.googleapis.com/drive/v3/files?"),
+  )!;
+  assert.equal(
+    JSON.parse(String(create.init!.body)).name,
+    "Ana Ficticia · CI 1.234.567-8",
+  );
 });
