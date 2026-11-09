@@ -1,4 +1,6 @@
+import { driveConfig } from "@/lib/drive";
 import {
+  processMedia,
   processOutbox,
   safeEqual,
   serviceClient,
@@ -28,5 +30,6 @@ export async function GET(req: Request) {
     };
     if (r.claimed < 20) break;
   }
-  return Response.json(total);
+  const media = await processMedia(db, cfg, driveConfig(), 10);
+  return Response.json({ ...total, media });
 }

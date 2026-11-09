@@ -167,6 +167,24 @@ export function waDemoSeed(now = Date.now()): {
         40,
       ),
       msg(a, "out", "human", "Hola Bruno, te paso la lista en un momento.", 35),
+      {
+        ...msg(
+          a,
+          "in",
+          "customer",
+          "recibo_sueldo_octubre.pdf",
+          20,
+          "document",
+        ),
+        media: {
+          id: "demo-media-1",
+          mime_type: "application/pdf",
+          filename: "recibo_sueldo_octubre.pdf",
+          drive_url:
+            "https://drive.google.com/drive/folders/demo-carpeta-ficticia",
+        },
+        media_status: "stored",
+      },
       msg(a, "in", "customer", "Perfecto, quedo atento.", 12),
       msg(
         b,

@@ -54,6 +54,33 @@ do $$declare r jsonb; aid uuid; ana uuid; o wa_outbox; begin
  update applications set assigned_user_id='00000000-0000-4000-8000-0000000000a2' where id=ana;
 end $$;
 
+-- Etapa 2 (migration 013): documents are queued for Drive, links recorded, case folder set once.
+do $$declare r jsonb; m uuid; ana uuid=(select id from applications where full_name='Ana Ficticia'); begin
+ r=wa_record_inbound('{"wamid":"wamid.DOC1","from":"59899000001","kind":"document","body":"recibo.pdf","media":{"id":"MEDIA1","mime_type":"application/pdf","filename":"recibo.pdf"}}');
+ m=(r->>'message_id')::uuid;
+ if (select media_status from wa_messages where id=m) is distinct from 'pending' then raise exception 'Document not queued for Drive';end if;
+ perform wa_record_inbound('{"wamid":"wamid.AUD1","from":"59899000001","kind":"audio","media":{"id":"MEDIA2"}}');
+ if (select media_status from wa_messages where wamid='wamid.AUD1') is not null then raise exception 'Audio queued for Drive';end if;
+ if not exists(select 1 from wa_claim_media(5) where id=m) then raise exception 'Media not claimed';end if;
+ begin perform wa_complete_media(m,'stored','F1','https://evil.example/x',null,null,false);raise exception 'Non-Drive URL accepted';exception when raise_exception then if sqlerrm='Non-Drive URL accepted' then raise;end if;end;
+ perform wa_complete_media(m,'stored','F1','https://drive.google.com/file/d/F1/view','https://drive.google.com/drive/folders/NEWFOLDER123',null,false);
+ if (select media->>'drive_url' from wa_messages where id=m) is distinct from 'https://drive.google.com/file/d/F1/view' or (select drive_folder_url from applications where id=ana) is distinct from 'https://drive.google.com/drive/folders/NEWFOLDER123' then raise exception 'Drive result not recorded';end if;
+ r=wa_record_inbound('{"wamid":"wamid.DOC2","from":"59899000001","kind":"image","media":{"id":"MEDIA3","mime_type":"image/jpeg"}}');
+ m=(r->>'message_id')::uuid;
+ perform wa_claim_media(5);
+ perform wa_complete_media(m,'stored','F2','https://drive.google.com/file/d/F2/view','https://drive.google.com/drive/folders/OTHER9999999',null,false);
+ if (select drive_folder_url from applications where id=ana) is distinct from 'https://drive.google.com/drive/folders/NEWFOLDER123' then raise exception 'Case folder overwritten';end if;
+ r=wa_record_inbound('{"wamid":"wamid.DOC3","from":"59899000001","kind":"document","media":{"id":"MEDIA4"}}');
+ m=(r->>'message_id')::uuid;
+ perform wa_claim_media(5);
+ perform wa_complete_media(m,'failed',null,null,null,'Error temporal',true);
+ if (select media_status from wa_messages where id=m) is distinct from 'pending' then raise exception 'Media retry not scheduled';end if;
+ update wa_messages set media_next_at=now()-interval '1 minute' where id=m;
+ perform wa_claim_media(5);
+ perform wa_complete_media(m,'failed',null,null,null,'La carpeta no existe',false);
+ if (select media_status from wa_messages where id=m) is distinct from 'failed' then raise exception 'Media failure not recorded';end if;
+ perform set_config('test.doc3',m::text,false);
+end $$;
 -- Seller A sees only the conversation of the case assigned to them; client roles cannot write.
 set local request.jwt.claim.sub='00000000-0000-4000-8000-0000000000a2';
 set local role authenticated;
@@ -71,6 +98,9 @@ do $$declare c uuid; begin
  update wa_settings set auto_greeting=false;
  if not (select auto_greeting from wa_settings) then raise exception 'Seller changed settings';end if;
  begin perform phone_wa from applications limit 1;raise exception 'Seller reads phone_wa';exception when insufficient_privilege then null;end;
+ perform wa_retry_media(current_setting('test.doc3')::uuid);
+ if (select media_status from wa_messages where id=current_setting('test.doc3')::uuid) is distinct from 'pending' then raise exception 'Assigned seller cannot retry upload';end if;
+ begin perform wa_claim_media(1);raise exception 'Seller claimed media';exception when insufficient_privilege then null;end;
 end $$;
 reset role;
 set local request.jwt.claim.sub='00000000-0000-4000-8000-0000000000a3';
@@ -82,12 +112,16 @@ end $$;
 reset role;
 do $$begin
  update wa_conversations set unread_count=3 where wa_id='59899000001';
+ update wa_messages set media_status='failed' where id=current_setting('test.doc3')::uuid;
 end $$;
 set local request.jwt.claim.sub='00000000-0000-4000-8000-0000000000a3';
 set local role authenticated;
-do $$begin perform wa_mark_read((select id from wa_conversations where wa_id='59899000001'));end $$;
+do $$begin perform wa_mark_read((select id from wa_conversations where wa_id='59899000001'));perform wa_retry_media(current_setting('test.doc3')::uuid);end $$;
 reset role;
-do $$begin if (select unread_count from wa_conversations where wa_id='59899000001')<>3 then raise exception 'Other seller marked chat read';end if;end $$;
+do $$begin
+ if (select unread_count from wa_conversations where wa_id='59899000001')<>3 then raise exception 'Other seller marked chat read';end if;
+ if (select media_status from wa_messages where id=current_setting('test.doc3')::uuid) is distinct from 'failed' then raise exception 'Other seller retried upload';end if;
+end $$;
 set local request.jwt.claim.sub='00000000-0000-4000-8000-0000000000a1';
 set local role authenticated;
 do $$begin

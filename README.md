@@ -44,7 +44,7 @@ La migración 005 habilita estas funciones en Supabase. La demo se actualiza sin
 
 Ahora hay dos pipelines independientes: comercial (nuevo cliente, en contacto, finalizado) y garantía (sin contactar, documentación solicitada/recibida, preaprobación cargada, aprobada/rechazada). Las tarjetas abren una ficha lateral sin salir del tablero. Se ordenan por última modificación o ingreso; las alertas se basan en el último comentario y el día calendario de Uruguay (próximo al día siguiente, urgente desde el segundo), excluyendo garantías aprobadas/rechazadas y archivadas. Sin comentarios se usa el ingreso; editar datos no elimina la alerta.
 
-La ficha reúne datos del cliente, fecha de ingreso, fecha de solicitud, enlace de carpeta Drive y ambos estados. Documentos exclusivamente en Drive: el CRM solo guarda el enlace. Historial cronológico con valores anteriores/nuevos, responsables y seguimientos; datos sensibles mantienen sus permisos. Rechazo formal exige un motivo y respaldo; solo administración registra decisiones finales. Para Supabase se requieren las migraciones hasta 012; la demo migra los datos anteriores automáticamente.
+La ficha reúne datos del cliente, fecha de ingreso, fecha de solicitud, enlace de carpeta Drive y ambos estados. Documentos exclusivamente en Drive: el CRM solo guarda el enlace. Historial cronológico con valores anteriores/nuevos, responsables y seguimientos; datos sensibles mantienen sus permisos. Rechazo formal exige un motivo y respaldo; solo administración registra decisiones finales. Para Supabase se requieren las migraciones hasta 013; la demo migra los datos anteriores automáticamente.
 
 
 ## Inicio, comentarios, marketing y estadísticas
@@ -80,4 +80,4 @@ La pestaña **WhatsApp** de la ficha y la bandeja **WhatsApp** del menú permite
 
 Usa la API oficial de Meta (Cloud API) con un número dedicado, con `WHATSAPP_ENABLED=false` por defecto. En la demo se muestran conversaciones ficticias guardadas en `porto-demo-whatsapp-v1`.
 
-Trámites, variables y pruebas: [docs/WHATSAPP.md](docs/WHATSAPP.md). Requiere las migraciones 011 y 012.
+Trámites, variables y pruebas: [docs/WHATSAPP.md](docs/WHATSAPP.md). Los documentos que manda el cliente se guardan en la carpeta del caso en Google Drive. Requiere las migraciones 011 a 013.

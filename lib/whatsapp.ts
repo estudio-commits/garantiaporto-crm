@@ -31,6 +31,9 @@ export type WaMessage = {
   error: string | null;
   created_at: string;
   status_at: string | null;
+  media_status?:
+    "pending" | "processing" | "stored" | "rejected" | "failed" | null;
+  media_error?: string | null;
 };
 
 export type WaMedia = {
@@ -38,6 +41,21 @@ export type WaMedia = {
   mime_type?: string;
   sha256?: string;
   filename?: string;
+  drive_file_id?: string;
+  drive_url?: string;
+};
+
+/** Only Google Drive links produced by the CRM are rendered as links. */
+export const safeDriveUrl = (u: string | undefined) => {
+  if (!u) return null;
+  try {
+    const url = new URL(u);
+    return url.protocol === "https:" && url.hostname === "drive.google.com"
+      ? url.toString()
+      : null;
+  } catch {
+    return null;
+  }
 };
 
 export type InboundMessage = {

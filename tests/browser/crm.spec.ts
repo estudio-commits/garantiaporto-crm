@@ -546,6 +546,13 @@ test("WhatsApp inbox opens the case conversation, sends inside the window and of
     .click();
   const panel = page.getByRole("region", { name: "Conversación de WhatsApp" });
   await expect(panel).toContainText("Perfecto, quedo atento.");
+  const document = panel.getByRole("article", {
+    name: "Cliente: recibo_sueldo_octubre.pdf",
+  });
+  await expect(document).toContainText("Guardado en la carpeta del caso");
+  await expect(
+    document.getByRole("link", { name: "Ver en Drive" }),
+  ).toHaveAttribute("href", /^https:\/\/drive\.google\.com\//);
   await expect(panel).toContainText("Ventana abierta hasta");
   await panel
     .getByLabel("Mensaje de WhatsApp")

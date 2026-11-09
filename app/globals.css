@@ -2194,3 +2194,23 @@ details > summary {
     align-items: stretch;
   }
 }
+.wa-media {
+  display: block;
+  margin-top: 2px;
+}
+.wa-media.stored {
+  color: #11713f;
+}
+.wa-media.failed,
+.wa-media.rejected {
+  color: #b42318;
+}
+.link-button {
+  background: none;
+  border: 0;
+  padding: 0;
+  color: var(--blue);
+  text-decoration: underline;
+  cursor: pointer;
+  font-size: inherit;
+}

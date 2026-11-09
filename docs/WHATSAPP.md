@@ -131,6 +131,36 @@ En la app de Meta → WhatsApp → Configuración → **Webhook**:
 - Token de verificación: el mismo valor de `WHATSAPP_VERIFY_TOKEN`
 - Suscribir el campo **messages**
 
+## Etapa 2 — Documentos a Google Drive (Google Workspace)
+
+Cuando el cliente manda un **PDF, una imagen o un Word** (hasta 20 MB) por WhatsApp, el CRM lo descarga de Meta y lo guarda en la **carpeta del caso**:
+
+- Si el caso no tiene carpeta, la crea dentro de la carpeta principal con el nombre "Nombre · CI · fecha de ingreso" y guarda el enlace en la ficha.
+- En el chat aparece "Guardado en la carpeta del caso" con el enlace **Ver en Drive**.
+- Si falla, aparece el motivo y un botón **Reintentar**.
+- Los audios, videos y stickers quedan solo en el chat.
+- **Los archivos no se guardan en la base del CRM.**
+
+### Configuración (una sola vez, con una cuenta administradora de Workspace)
+
+1. **Crear un proyecto en Google Cloud.** En [console.cloud.google.com](https://console.cloud.google.com/), con la cuenta de Workspace de la empresa, crear el proyecto "CRM Garantía Porto". Después, en APIs y servicios → Biblioteca, habilitar **Google Drive API**.
+2. **Crear la cuenta de servicio.** En IAM y administración → Cuentas de servicio → **Crear cuenta de servicio**, con el nombre "crm-drive" y sin roles. Después, en la cuenta → Claves → Agregar clave → **JSON**: se descarga un archivo. **No lo envíes por chat ni lo subas a Git.**
+   - Si Google no permite crear la clave, es por una política de la organización ("Disable service account key creation"). Un administrador puede permitirla solo para este proyecto, en IAM → Políticas de la organización.
+3. **Crear la unidad compartida.** En Google Drive, crear una **unidad compartida** "Clientes CRM", o usar una existente. Después:
+   - en Administrar miembros, agregar el email de la cuenta de servicio (termina en `@...iam.gserviceaccount.com`) como **Administrador de contenido**;
+   - dentro de la unidad, crear la carpeta principal, por ejemplo "Solicitudes", y copiar su ID: es lo que aparece después de `/folders/` en la dirección.
+4. **Cargar las variables en Vercel:**
+
+| Variable                             | Valor                                                                          |
+| ------------------------------------ | ------------------------------------------------------------------------------ |
+| `GOOGLE_SERVICE_ACCOUNT_EMAIL`       | `client_email` del archivo JSON                                                |
+| `GOOGLE_SERVICE_ACCOUNT_PRIVATE_KEY` | `private_key` del archivo JSON (completo, desde `-----BEGIN PRIVATE KEY-----`) |
+| `GOOGLE_DRIVE_PARENT_FOLDER_ID`      | ID de la carpeta principal                                                     |
+
+**Carpetas creadas a mano.** Si un caso ya tiene una carpeta cargada a mano, el CRM guarda los documentos en esa carpeta. Tiene que estar dentro de la unidad compartida o compartida con la cuenta de servicio. Si no, el chat muestra "La carpeta no existe o no está compartida con la cuenta del CRM": se comparte la carpeta y se toca **Reintentar**.
+
+**Privacidad.** Los documentos quedan en una unidad compartida de la empresa: el acceso lo dan los miembros de la unidad y el CRM nunca crea enlaces públicos. Los archivos pasan por Meta y por el servidor del CRM solo en tránsito.
+
 ## Prueba antes de usar el número real
 
 1. Con el número de prueba: agregar tu celular como destinatario de prueba en Meta. Después:
@@ -159,7 +189,7 @@ Por ahora se edita desde Supabase. Una pantalla de configuración en "Integracio
 | Prerrequisito | Corrección de la auditoría de seguridad (migración 011)                                                                                               | Listo para revisar        |
 | 0             | Trámites de Meta, plantillas, consentimiento                                                                                                          | A cargo de Garantía Porto |
 | 1             | Base de datos, webhook, envíos con cola y reintentos, saludo automático, casos desde WhatsApp, respuesta automática, pestaña y bandeja WhatsApp, demo | Listo para revisar        |
-| 2             | Documentos → Google Drive                                                                                                                             | Pendiente                 |
+| 2             | Documentos → Google Drive (unidad compartida de Workspace, carpeta por caso, reintentos)                                                              | Listo para revisar        |
 | 3             | Asistente con IA, base de respuestas, documentos por garantía, derivación, configuración en pantalla, piloto                                          | Pendiente                 |
 
 ## Costos estimados (100–200 conversaciones/mes)
@@ -175,6 +205,6 @@ Tarifas de la región "Resto de Latinoamérica", vigentes desde el 1/10/2026 seg
 
 ## Datos pendientes
 
-- [ ] ¿Usan **Google Workspace** o una cuenta Gmail común para Drive? (etapa 2)
+- [x] Usan **Google Workspace** (etapa 2: unidad compartida + cuenta de servicio).
 - [ ] Horario de atención de la persona que toma las derivaciones, y el nombre con el que el bot la presenta (etapa 3).
 - [ ] Lista de documentos por tipo de garantía y preguntas frecuentes con respuestas aprobadas (etapa 3).

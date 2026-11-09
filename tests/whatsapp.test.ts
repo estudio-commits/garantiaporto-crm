@@ -253,3 +253,312 @@ test("processOutbox sends, rejects invalid numbers and expires old greetings", a
   assert.equal(completed[1].p_retry, false);
   assert.match(String(completed[2].p_error), /vencido/);
 });
+
+// ---- Etapa 2: Drive ----
+import { generateKeyPairSync, createHash as hash } from "node:crypto";
+import {
+  folderIdFromUrl,
+  ensureCaseFolder,
+  uploadFile,
+  type DriveConfig,
+} from "../lib/drive";
+import {
+  caseFolderName,
+  downloadMedia,
+  mediaFileName,
+  processMedia,
+} from "../lib/whatsapp-server";
+
+const { privateKey } = generateKeyPairSync("rsa", { modulusLength: 2048 });
+const drive: DriveConfig = {
+  enabled: true,
+  clientEmail: "crm-ficticio@proyecto-ficticio.iam.gserviceaccount.com",
+  privateKey: privateKey.export({ type: "pkcs8", format: "pem" }).toString(),
+  parentFolderId: "PARENTFOLDER123",
+};
+
+type Call = { url: string; init?: RequestInit };
+function fakeGoogle(handlers: ((c: Call) => Response | undefined)[]) {
+  const calls: Call[] = [];
+  const f = (async (url: string, init?: RequestInit) => {
+    const c = { url: String(url), init };
+    calls.push(c);
+    if (c.url === "https://oauth2.googleapis.com/token")
+      return new Response(
+        JSON.stringify({ access_token: "ya29.ficticio", expires_in: 3600 }),
+        { status: 200 },
+      );
+    for (const h of handlers) {
+      const r = h(c);
+      if (r) return r;
+    }
+    return new Response("{}", { status: 404 });
+  }) as typeof fetch;
+  return { f, calls };
+}
+
+test("Drive folder URL parsing and naming", () => {
+  assert.equal(
+    folderIdFromUrl(
+      "https://drive.google.com/drive/folders/AbC_123-xyz?usp=sharing",
+    ),
+    "AbC_123-xyz",
+  );
+  assert.equal(
+    folderIdFromUrl("https://drive.google.com/drive/u/1/folders/AbC_123-xyz"),
+    "AbC_123-xyz",
+  );
+  assert.equal(folderIdFromUrl("https://evil.example/drive/folders/x"), null);
+  assert.equal(
+    caseFolderName({
+      full_name: "Ana/Ficticia",
+      national_id: "12345678",
+      phone: "099",
+      created_at: "2026-11-07T12:00:00Z",
+    }),
+    "Ana Ficticia · CI 12345678 · 2026-11-07",
+  );
+  assert.equal(
+    mediaFileName(
+      "document",
+      { id: "m", filename: "recibo:octubre.pdf" },
+      "application/pdf",
+      "2026-11-07T15:30:00Z",
+    ),
+    "2026-11-07 1230 WhatsApp - recibo octubre.pdf",
+  );
+});
+
+test("ensureCaseFolder reuses a tagged folder and creates one in the parent otherwise", async () => {
+  const found = fakeGoogle([
+    (c) =>
+      c.url.includes("/files?") && c.init?.method === "GET"
+        ? new Response(JSON.stringify({ files: [{ id: "EXISTINGFOLDER1" }] }))
+        : undefined,
+  ]);
+  assert.equal(
+    await ensureCaseFolder(
+      drive,
+      "a1b2c3d4-0000-4000-8000-000000000001",
+      "Caso",
+      found.f,
+    ),
+    "EXISTINGFOLDER1",
+  );
+  const created = fakeGoogle([
+    (c) =>
+      c.init?.method === "GET"
+        ? new Response(JSON.stringify({ files: [] }))
+        : undefined,
+    (c) =>
+      c.init?.method === "POST" &&
+      c.url.startsWith("https://www.googleapis.com/drive/v3/files")
+        ? new Response(JSON.stringify({ id: "NEWFOLDER12345" }))
+        : undefined,
+  ]);
+  assert.equal(
+    await ensureCaseFolder(
+      drive,
+      "a1b2c3d4-0000-4000-8000-000000000001",
+      "Caso ficticio",
+      created.f,
+    ),
+    "NEWFOLDER12345",
+  );
+  const body = JSON.parse(
+    String(
+      created.calls.find(
+        (c) => c.init?.method === "POST" && !c.url.includes("oauth2"),
+      )!.init!.body,
+    ),
+  );
+  assert.deepEqual(body.parents, ["PARENTFOLDER123"]);
+  assert.equal(
+    body.appProperties.crm_case,
+    "a1b2c3d4-0000-4000-8000-000000000001",
+  );
+});
+
+test("uploadFile sends multipart into the folder and returns the Drive link", async () => {
+  const g = fakeGoogle([
+    (c) =>
+      c.url.startsWith("https://www.googleapis.com/upload/")
+        ? new Response(
+            JSON.stringify({
+              id: "FILE1",
+              webViewLink: "https://drive.google.com/file/d/FILE1/view",
+            }),
+          )
+        : undefined,
+  ]);
+  const r = await uploadFile(
+    drive,
+    "FOLDER1234567",
+    "doc.pdf",
+    "application/pdf",
+    Buffer.from("%PDF-1.4 ficticio"),
+    g.f,
+  );
+  assert.deepEqual(r, {
+    id: "FILE1",
+    url: "https://drive.google.com/file/d/FILE1/view",
+  });
+  const up = g.calls.find((c) =>
+    c.url.startsWith("https://www.googleapis.com/upload/"),
+  )!;
+  assert.match(
+    String((up.init!.headers as Record<string, string>).authorization),
+    /^Bearer ya29\.ficticio$/,
+  );
+  assert.match(
+    Buffer.from(up.init!.body as Buffer).toString(),
+    /"parents":\["FOLDER1234567"\][\s\S]*%PDF-1\.4 ficticio/,
+  );
+});
+
+function fakeMeta(file: Buffer, meta: Record<string, unknown>) {
+  return (async (url: string, init?: RequestInit) => {
+    if (String(url) === "https://graph.example.test/v23.0/MEDIA1")
+      return new Response(
+        JSON.stringify({
+          url: "https://lookaside.fbsbx.com/whatsapp_business/attachments/?mid=1",
+          ...meta,
+        }),
+      );
+    if (String(url).startsWith("https://lookaside.fbsbx.com/")) {
+      assert.equal(
+        (init?.headers as Record<string, string>).authorization,
+        "Bearer token-ficticio",
+      );
+      return new Response(new Uint8Array(file));
+    }
+    return new Response("{}", { status: 404 });
+  }) as typeof fetch;
+}
+
+test("downloadMedia validates type, size, host and checksum", async () => {
+  const pdf = Buffer.from("%PDF-1.4 documento ficticio");
+  const sha = hash("sha256").update(pdf).digest("hex");
+  const ok = await downloadMedia(
+    cfg,
+    "MEDIA1",
+    fakeMeta(pdf, {
+      mime_type: "application/pdf",
+      file_size: pdf.length,
+      sha256: sha,
+    }),
+  );
+  assert.equal(ok.ok, true);
+  const exe = await downloadMedia(
+    cfg,
+    "MEDIA1",
+    fakeMeta(pdf, { mime_type: "application/x-msdownload" }),
+  );
+  assert.equal(!exe.ok && exe.reject, true);
+  const big = await downloadMedia(
+    cfg,
+    "MEDIA1",
+    fakeMeta(pdf, {
+      mime_type: "application/pdf",
+      file_size: 30 * 1024 * 1024,
+    }),
+  );
+  assert.equal(!big.ok && big.reject, true);
+  const tampered = await downloadMedia(
+    cfg,
+    "MEDIA1",
+    fakeMeta(pdf, { mime_type: "application/pdf", sha256: "0".repeat(64) }),
+  );
+  assert.equal(!tampered.ok && tampered.retry, true);
+  const evilHost = await downloadMedia(cfg, "MEDIA1", (async (url: string) =>
+    String(url).endsWith("/MEDIA1")
+      ? new Response(
+          JSON.stringify({
+            url: "https://attacker.example/steal",
+            mime_type: "application/pdf",
+          }),
+        )
+      : new Response("should not be called", { status: 500 })) as typeof fetch);
+  assert.equal(!evilHost.ok && evilHost.reject, true);
+  assert.equal(
+    (await downloadMedia(cfg, "../etc", fakeMeta(pdf, {}))).ok,
+    false,
+  );
+});
+
+test("processMedia files a document in a new case folder and records the link", async () => {
+  const pdf = Buffer.from("%PDF-1.4 documento ficticio");
+  const meta = fakeMeta(pdf, {
+    mime_type: "application/pdf",
+    file_size: pdf.length,
+  });
+  const google = fakeGoogle([
+    (c) =>
+      c.init?.method === "GET" &&
+      c.url.startsWith("https://www.googleapis.com/drive/v3/files?")
+        ? new Response(JSON.stringify({ files: [] }))
+        : undefined,
+    (c) =>
+      c.init?.method === "POST" &&
+      c.url.startsWith("https://www.googleapis.com/drive/v3/files?")
+        ? new Response(JSON.stringify({ id: "NEWFOLDER12345" }))
+        : undefined,
+    (c) =>
+      c.url.startsWith("https://www.googleapis.com/upload/")
+        ? new Response(
+            JSON.stringify({
+              id: "FILE1",
+              webViewLink: "https://drive.google.com/file/d/FILE1/view",
+            }),
+          )
+        : undefined,
+  ]);
+  const fetcher = (async (url: string, init?: RequestInit) =>
+    String(url).includes("googleapis.com")
+      ? google.f(url, init)
+      : meta(url, init)) as typeof fetch;
+  const completed: Record<string, unknown>[] = [];
+  const db = {
+    rpc: (fn: string, args: Record<string, unknown>) => {
+      if (fn === "wa_media_case")
+        return {
+          single: async () => ({
+            data: {
+              full_name: "Ana Ficticia",
+              national_id: null,
+              phone: "099000001",
+              created_at: "2026-11-07T12:00:00Z",
+              drive_folder_url: null,
+            },
+            error: null,
+          }),
+        };
+      if (fn === "wa_claim_media")
+        return Promise.resolve({
+          data: [
+            {
+              id: "m1",
+              application_id: "a1b2c3d4-0000-4000-8000-000000000001",
+              kind: "document",
+              media: { id: "MEDIA1", filename: "recibo.pdf" },
+              created_at: "2026-11-07T15:30:00Z",
+            },
+          ],
+          error: null,
+        });
+      completed.push(args);
+      return Promise.resolve({ data: null, error: null });
+    },
+  };
+  const r = await processMedia(db as never, cfg, drive, 5, fetcher);
+  assert.deepEqual(r, { claimed: 1, stored: 1, failed: 0 });
+  assert.deepEqual(completed[0], {
+    p_id: "m1",
+    p_status: "stored",
+    p_file_id: "FILE1",
+    p_file_url: "https://drive.google.com/file/d/FILE1/view",
+    p_folder_url: "https://drive.google.com/drive/folders/NEWFOLDER12345",
+    p_error: null,
+    p_retry: false,
+  });
+});

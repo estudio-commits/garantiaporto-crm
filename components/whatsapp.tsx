@@ -6,6 +6,7 @@ import { waDemoSeed } from "@/lib/demo";
 import type { Application, Profile } from "@/lib/domain";
 import { whatsappNumber } from "@/lib/phone";
 import {
+  safeDriveUrl,
   windowClosesAt,
   windowOpen,
   type WaConversation,
@@ -300,6 +301,9 @@ export function WhatsAppPanel({
               {m.media ? "📎 " : ""}
               {m.body || (m.media ? "Archivo adjunto" : "")}
             </p>
+            {m.media_status && (
+              <MediaState message={m} demo={demo} retried={load} />
+            )}
             {m.direction === "out" && (
               <small className="wa-status">
                 {statusLabel[m.status]}
@@ -522,5 +526,57 @@ export function WhatsAppInbox({
         })}
       </ul>
     </section>
+  );
+}
+
+const mediaLabel: Record<string, string> = {
+  pending: "Guardando en Drive…",
+  processing: "Guardando en Drive…",
+  stored: "Guardado en la carpeta del caso",
+  rejected: "No se guardó",
+  failed: "No se pudo guardar en Drive",
+};
+
+function MediaState({
+  message: m,
+  demo,
+  retried,
+}: {
+  message: WaMessage;
+  demo: boolean;
+  retried: () => void;
+}) {
+  const [busy, setBusy] = useState(false);
+  const link = safeDriveUrl(m.media?.drive_url);
+  return (
+    <small className={`wa-media ${m.media_status}`}>
+      {mediaLabel[m.media_status ?? ""] ?? ""}
+      {m.media_error ? ` · ${m.media_error}` : ""}
+      {link && (
+        <>
+          {" · "}
+          <a href={link} target="_blank" rel="noopener noreferrer">
+            Ver en Drive
+          </a>
+        </>
+      )}
+      {m.media_status === "failed" && !demo && (
+        <>
+          {" · "}
+          <button
+            className="link-button"
+            disabled={busy}
+            onClick={async () => {
+              setBusy(true);
+              await supabase!.rpc("wa_retry_media", { p_message: m.id });
+              setBusy(false);
+              retried();
+            }}
+          >
+            Reintentar
+          </button>
+        </>
+      )}
+    </small>
   );
 }
