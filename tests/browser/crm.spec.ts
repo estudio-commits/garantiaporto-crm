@@ -324,9 +324,7 @@ test("mobile preview, source management and disabled integration", async ({
   await expect(
     page.getByRole("heading", { name: "Estado de las conexiones" }),
   ).toBeVisible();
-  await expect(page.getByLabel("Formulario web")).toContainText(
-    "Demostración",
-  );
+  await expect(page.getByLabel("Formulario web")).toContainText("Demostración");
   await expect(page.getByText(/pendiente/i)).toHaveCount(0);
   expect(
     await page.evaluate(
@@ -554,6 +552,16 @@ test("WhatsApp inbox opens the case conversation, sends inside the window and of
     "1",
   );
   await nav(page, "WhatsApp").click();
+  const chats = page.getByRole("region", { name: "Bandeja de WhatsApp" });
+  // Unread chats come first, like WhatsApp.
+  await expect(
+    chats.locator(".wa-list li button").first(),
+  ).toHaveAccessibleName(
+    "Abrir conversación con Bruno Demostración (1 sin leer)",
+  );
+  await chats.getByRole("button", { name: /^No leídos/ }).click();
+  await expect(chats.locator(".wa-list li button")).toHaveCount(1);
+  await chats.getByRole("button", { name: /^Todos/ }).click();
   await page
     .getByRole("button", { name: "Abrir conversación con Bruno Demostración" })
     .click();
@@ -578,8 +586,12 @@ test("WhatsApp inbox opens the case conversation, sends inside the window and of
     0,
     { timeout: 20000 },
   );
-  await page.getByRole("button", { name: "Volver a solicitudes" }).click();
-  await nav(page, "WhatsApp").click();
+  await expect(
+    chats.getByRole("button", {
+      name: "Abrir conversación con Bruno Demostración",
+      exact: true,
+    }),
+  ).toBeVisible();
   await page
     .getByRole("button", { name: "Abrir conversación con Valentina Ejemplo" })
     .click();
@@ -588,5 +600,10 @@ test("WhatsApp inbox opens the case conversation, sends inside the window and of
   await panel
     .getByRole("button", { name: "Enviar plantilla para retomar" })
     .click();
+  await expect(panel).toContainText("Plantilla: retomar_conversacion");
+  await page.getByRole("button", { name: "Ver ficha" }).click();
+  await expect(
+    page.getByRole("button", { name: "Volver a solicitudes" }),
+  ).toBeVisible();
   await expect(panel).toContainText("Plantilla: retomar_conversacion");
 });

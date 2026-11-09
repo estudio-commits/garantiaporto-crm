@@ -1,12 +1,28 @@
 "use client";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { Bell, MessageCircle, RefreshCw, Send } from "lucide-react";
+import {
+  ArrowLeft,
+  Bell,
+  Check,
+  CheckCheck,
+  CircleAlert,
+  ExternalLink,
+  MessageCircle,
+  RefreshCw,
+  Search,
+  Send,
+} from "lucide-react";
 import { supabase } from "@/lib/supabase";
 import { waDemoSeed } from "@/lib/demo";
 import type { Application, Profile } from "@/lib/domain";
 import { whatsappNumber } from "@/lib/phone";
 import {
+  dayLabel,
+  initials,
+  listTime,
   safeDriveUrl,
+  sameDay,
+  sortInbox,
   windowClosesAt,
   windowOpen,
   type WaConversation,
@@ -187,14 +203,39 @@ const authorLabel = (m: WaMessage) =>
         ? "Asistente"
         : "Automático";
 
+const hour = (s: string) =>
+  new Intl.DateTimeFormat("es-UY", {
+    hour: "2-digit",
+    minute: "2-digit",
+    hour12: false,
+    timeZone: "America/Montevideo",
+  }).format(new Date(s));
+
+function Ticks({ status }: { status: WaMessage["status"] }) {
+  if (status === "failed")
+    return <CircleAlert size={14} className="wa-tick failed" />;
+  if (status === "sent") return <Check size={14} className="wa-tick" />;
+  if (status === "delivered")
+    return <CheckCheck size={14} className="wa-tick" />;
+  if (status === "read")
+    return <CheckCheck size={14} className="wa-tick read" />;
+  return null;
+}
+
 export function WhatsAppPanel({
   app,
   profile,
   demo,
+  embedded = false,
+  onChange,
 }: {
   app: Application;
   profile: Profile;
   demo: boolean;
+  /** Rendered inside the inbox, which shows its own header with the client's name. */
+  embedded?: boolean;
+  /** Called after messages are read or sent, so the inbox list can refresh. */
+  onChange?: () => void;
 }) {
   const [messages, setMessages] = useState<WaMessage[]>([]),
     [conversation, setConversation] = useState<WaConversation | null>(null),
@@ -214,11 +255,14 @@ export function WhatsAppPanel({
       setConversation(c);
       setMessages(msgs);
       setNow(Date.now());
-      if (c?.unread_count) await markRead(demo, c);
+      if (c?.unread_count) {
+        await markRead(demo, c);
+        onChange?.();
+      }
     } catch (e) {
       setError(e instanceof Error ? e.message : "No se pudo cargar WhatsApp.");
     }
-  }, [demo, app.id]);
+  }, [demo, app.id, onChange]);
   useEffect(() => {
     load();
     const t = setInterval(load, 10000);
@@ -247,6 +291,7 @@ export function WhatsAppPanel({
       if (action === "text") setText("");
       setConsent(false);
       await load();
+      onChange?.();
     } catch (e) {
       setError(e instanceof Error ? e.message : "No se pudo enviar.");
     } finally {
@@ -256,13 +301,15 @@ export function WhatsAppPanel({
 
   return (
     <section
-      className="card padded wa-panel"
+      className={embedded ? "wa-panel embedded" : "card padded wa-panel"}
       aria-label="Conversación de WhatsApp"
     >
       <div className="wa-head">
-        <h2>
-          <MessageCircle size={18} /> WhatsApp
-        </h2>
+        {!embedded && (
+          <h2>
+            <MessageCircle size={18} /> WhatsApp
+          </h2>
+        )}
         <span className={open ? "wa-window open" : "wa-window"}>
           {open && closes
             ? `Ventana abierta hasta ${time(closes.toISOString())}`
@@ -289,31 +336,48 @@ export function WhatsAppPanel({
       )}
       <div className="wa-thread" role="log" aria-label="Mensajes">
         {messages.length === 0 && (
-          <p className="muted">Todavía no hay mensajes con este cliente.</p>
+          <p className="wa-empty">Todavía no hay mensajes con este cliente.</p>
         )}
-        {messages.map((m) => (
-          <article
-            key={m.id}
-            className={`wa-bubble ${m.direction} ${m.status === "failed" ? "failed" : ""}`}
-            aria-label={`${authorLabel(m)}: ${m.body}`}
-          >
-            <small>
-              {authorLabel(m)} · {time(m.created_at)}
-            </small>
-            <p>
-              {m.media ? "📎 " : ""}
-              {m.body || (m.media ? "Archivo adjunto" : "")}
-            </p>
-            {m.media_status && (
-              <MediaState message={m} demo={demo} retried={load} />
+        {messages.map((m, i) => (
+          <div key={m.id} className="wa-row">
+            {(i === 0 ||
+              !sameDay(messages[i - 1]!.created_at, m.created_at)) && (
+              <div className="wa-day">
+                <span>{dayLabel(m.created_at, now)}</span>
+              </div>
             )}
-            {m.direction === "out" && (
-              <small className="wa-status">
-                {statusLabel[m.status]}
-                {m.error ? ` · ${m.error}` : ""}
+            <article
+              className={`wa-bubble ${m.direction} ${m.status === "failed" ? "failed" : ""}`}
+              aria-label={`${authorLabel(m)}: ${m.body}`}
+            >
+              {m.direction === "out" && (
+                <small className={`wa-author ${m.author}`}>
+                  {authorLabel(m)}
+                </small>
+              )}
+              <p>
+                {m.media ? "📎 " : ""}
+                {m.body || (m.media ? "Archivo adjunto" : "")}
+              </p>
+              {m.media_status && (
+                <MediaState message={m} demo={demo} retried={load} />
+              )}
+              <small className="wa-status" title={time(m.created_at)}>
+                {hour(m.created_at)}
+                {m.direction === "out" && (
+                  <>
+                    <Ticks status={m.status} />
+                    <span className="sr-only wa-status-text">
+                      {statusLabel[m.status]}
+                    </span>
+                  </>
+                )}
               </small>
-            )}
-          </article>
+              {m.direction === "out" && m.error && (
+                <small className="wa-error">{m.error}</small>
+              )}
+            </article>
+          </div>
         ))}
         <div ref={endRef} />
       </div>
@@ -423,18 +487,27 @@ export function useWhatsAppUnread(demo: boolean, active: boolean) {
   return unread;
 }
 
+type InboxFilter = "todas" | "no_leidas" | "atencion";
+
 export function WhatsAppInbox({
   applications,
+  profile,
   demo,
   open,
 }: {
   applications: Application[];
+  profile: Profile;
   demo: boolean;
+  /** Opens the client's full case file. */
   open: (applicationId: string) => void;
 }) {
   const [convs, setConvs] = useState<WaConversation[]>([]),
     [last, setLast] = useState<Map<string, WaMessage>>(new Map()),
     [error, setError] = useState(""),
+    [selected, setSelected] = useState<string | null>(null),
+    [query, setQuery] = useState(""),
+    [filter, setFilter] = useState<InboxFilter>("todas"),
+    [now, setNow] = useState(Date.now()),
     [permission, setPermission] = useState<string>(
       typeof Notification === "undefined"
         ? "unsupported"
@@ -458,6 +531,7 @@ export function WhatsAppInbox({
       }
       setConvs(c);
       setLast(map);
+      setNow(Date.now());
       setError("");
     } catch (e) {
       setError(e instanceof Error ? e.message : "No se pudo cargar WhatsApp.");
@@ -465,73 +539,203 @@ export function WhatsAppInbox({
   }, [demo]);
   useEffect(() => {
     load();
-    const t = setInterval(load, 15000);
+    const t = setInterval(load, 10000);
     return () => clearInterval(t);
   }, [load]);
-  const rows = convs
-    .filter((c) => c.application_id && byId.has(c.application_id))
-    .sort(
-      (a, b) =>
-        Number(b.needs_human) - Number(a.needs_human) ||
-        Number(b.unread_count > 0) - Number(a.unread_count > 0) ||
-        (b.last_message_at ?? "").localeCompare(a.last_message_at ?? ""),
+
+  const visible = convs.filter(
+    (c) => c.application_id && byId.has(c.application_id),
+  );
+  const unreadCount = visible.filter((c) => c.unread_count > 0).length;
+  const attentionCount = visible.filter((c) => c.needs_human).length;
+  const q = query.trim().toLowerCase();
+  const digits = q.replace(/\D/g, "");
+  const rows = sortInbox(
+    visible.filter((c) => {
+      if (filter === "no_leidas" && !c.unread_count) return false;
+      if (filter === "atencion" && !c.needs_human) return false;
+      if (!q) return true;
+      const a = byId.get(c.application_id!)!;
+      return (
+        a.full_name.toLowerCase().includes(q) ||
+        (digits.length >= 3 &&
+          (c.wa_id.includes(digits) ||
+            a.phone.replace(/\D/g, "").includes(digits)))
+      );
+    }),
+  );
+  const current = convs.find((c) => c.application_id === selected);
+  const app = selected ? byId.get(selected) : undefined;
+
+  function choose(c: WaConversation) {
+    setSelected(c.application_id);
+    // Clear the badge at once; the chat marks the conversation read on the server.
+    setConvs((l) =>
+      l.map((x) => (x.id === c.id ? { ...x, unread_count: 0 } : x)),
     );
+  }
+
   return (
-    <section className="card padded wa-inbox">
-      <div className="wa-head">
-        <h2>Conversaciones</h2>
-        {permission === "default" && (
-          <button
-            className="secondary"
-            onClick={async () =>
-              setPermission(await Notification.requestPermission())
-            }
-          >
-            <Bell size={16} /> Activar avisos en este dispositivo
-          </button>
+    <section
+      className={`card wa-app ${app ? "has-chat" : ""}`}
+      aria-label="Bandeja de WhatsApp"
+    >
+      <aside className="wa-side">
+        <div className="wa-side-head">
+          <h2>Chats</h2>
+          {permission === "default" && (
+            <button
+              className="icon-button"
+              title="Activar avisos en este dispositivo"
+              aria-label="Activar avisos en este dispositivo"
+              onClick={async () =>
+                setPermission(await Notification.requestPermission())
+              }
+            >
+              <Bell size={16} />
+            </button>
+          )}
+        </div>
+        <div className="wa-search">
+          <Search size={15} />
+          <input
+            aria-label="Buscar conversación"
+            placeholder="Buscar por nombre o celular"
+            value={query}
+            onChange={(e) => setQuery(e.target.value)}
+          />
+        </div>
+        <div className="wa-filters" role="group" aria-label="Filtrar chats">
+          {(
+            [
+              ["todas", "Todos", 0],
+              ["no_leidas", "No leídos", unreadCount],
+              ["atencion", "Requieren atención", attentionCount],
+            ] as const
+          ).map(([k, label, n]) => (
+            <button
+              key={k}
+              className={filter === k ? "active" : ""}
+              aria-pressed={filter === k}
+              onClick={() => setFilter(k)}
+            >
+              {label}
+              {n > 0 && <span>{n}</span>}
+            </button>
+          ))}
+        </div>
+        {error && (
+          <p className="alert" role="alert">
+            {error}
+          </p>
+        )}
+        <ul className="wa-list">
+          {rows.length === 0 && (
+            <li className="wa-empty">
+              {visible.length === 0
+                ? "Todavía no hay conversaciones de WhatsApp."
+                : "No hay chats con ese filtro."}
+            </li>
+          )}
+          {rows.map((c) => {
+            const a = byId.get(c.application_id!)!;
+            const m = last.get(c.id);
+            const unread = c.unread_count > 0;
+            return (
+              <li key={c.id}>
+                <button
+                  className={`${unread ? "unread" : ""} ${selected === a.id ? "selected" : ""}`}
+                  aria-label={`Abrir conversación con ${a.full_name}${unread ? ` (${c.unread_count} sin leer)` : ""}`}
+                  aria-current={selected === a.id ? "true" : undefined}
+                  onClick={() => choose(c)}
+                >
+                  <span className="wa-avatar" aria-hidden>
+                    {initials(a.full_name)}
+                  </span>
+                  <span className="wa-item">
+                    <span className="wa-item-top">
+                      <span className="wa-name">{a.full_name}</span>
+                      <span className="wa-time">
+                        {c.last_message_at
+                          ? listTime(c.last_message_at, now)
+                          : ""}
+                      </span>
+                    </span>
+                    <span className="wa-item-bottom">
+                      <span className="wa-preview">
+                        {m?.direction === "out" && <Ticks status={m.status} />}
+                        {m
+                          ? `${m.direction === "out" ? (m.author === "bot" ? "Asistente: " : m.author === "system" ? "" : "Vos: ") : ""}${m.body || "📎 Archivo adjunto"}`
+                          : "Sin mensajes"}
+                      </span>
+                      {c.needs_human && (
+                        <span className="wa-flag" title="Requiere atención">
+                          Atención
+                        </span>
+                      )}
+                      {unread && (
+                        <span className="wa-unread" aria-hidden>
+                          {c.unread_count}
+                        </span>
+                      )}
+                    </span>
+                  </span>
+                </button>
+              </li>
+            );
+          })}
+        </ul>
+      </aside>
+      <div className="wa-main">
+        {app ? (
+          <>
+            <header className="wa-chat-head">
+              <button
+                className="icon-button wa-back"
+                aria-label="Volver a los chats"
+                onClick={() => setSelected(null)}
+              >
+                <ArrowLeft size={16} />
+              </button>
+              <span className="wa-avatar" aria-hidden>
+                {initials(app.full_name)}
+              </span>
+              <div className="wa-chat-title">
+                <strong>{app.full_name}</strong>
+                <small>
+                  {app.phone}
+                  {current?.profile_name &&
+                  current.profile_name !== app.full_name
+                    ? ` · en WhatsApp: ${current.profile_name}`
+                    : ""}
+                </small>
+              </div>
+              <button
+                className="secondary"
+                aria-label="Ver ficha"
+                onClick={() => open(app.id)}
+              >
+                <ExternalLink size={14} />
+                <span className="wa-hide-sm">Ver ficha</span>
+              </button>
+            </header>
+            <WhatsAppPanel
+              key={app.id}
+              app={app}
+              profile={profile}
+              demo={demo}
+              embedded
+              onChange={load}
+            />
+          </>
+        ) : (
+          <div className="wa-placeholder">
+            <MessageCircle size={40} />
+            <p>Elegí un chat para ver la conversación.</p>
+            <small>Los chats con mensajes sin leer aparecen primero.</small>
+          </div>
         )}
       </div>
-      {error && (
-        <p className="alert" role="alert">
-          {error}
-        </p>
-      )}
-      {rows.length === 0 && (
-        <p className="muted">Todavía no hay conversaciones de WhatsApp.</p>
-      )}
-      <ul className="wa-list">
-        {rows.map((c) => {
-          const a = byId.get(c.application_id!)!;
-          const m = last.get(c.id);
-          return (
-            <li key={c.id}>
-              <button
-                aria-label={`Abrir conversación con ${a.full_name}`}
-                onClick={() => open(a.id)}
-              >
-                <span className="wa-name">
-                  {a.full_name}
-                  {c.unread_count > 0 && (
-                    <span className="nav-count">{c.unread_count}</span>
-                  )}
-                  {c.needs_human && (
-                    <span className="wa-flag">Requiere atención</span>
-                  )}
-                </span>
-                <span className="wa-preview">
-                  {m
-                    ? `${m.direction === "in" ? "" : "Vos: "}${m.body || "Archivo adjunto"}`
-                    : "Sin mensajes"}
-                </span>
-                <span className="wa-meta">
-                  {c.last_message_at ? time(c.last_message_at) : ""}
-                  {windowOpen(c.last_inbound_at) ? " · Ventana abierta" : ""}
-                </span>
-              </button>
-            </li>
-          );
-        })}
-      </ul>
     </section>
   );
 }

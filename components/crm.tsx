@@ -851,6 +851,7 @@ export default function CRM() {
               {page === "WhatsApp" && (
                 <WhatsAppInbox
                   applications={allowed}
+                  profile={profile!}
                   demo={demo}
                   open={(id) => {
                     setCaseTab("WhatsApp");
