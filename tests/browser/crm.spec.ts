@@ -320,6 +320,19 @@ test("mobile preview, source management and disabled integration", async ({
   ).toBeTruthy();
   await page.keyboard.press("Escape");
   await expect(page.getByRole("dialog")).toHaveCount(0);
+  await nav(page, "Integraciones").click();
+  await expect(
+    page.getByRole("heading", { name: "Estado de las conexiones" }),
+  ).toBeVisible();
+  await expect(page.getByLabel("Formulario web")).toContainText(
+    "Demostración",
+  );
+  await expect(page.getByText(/pendiente/i)).toHaveCount(0);
+  expect(
+    await page.evaluate(
+      () => document.documentElement.scrollWidth <= innerWidth,
+    ),
+  ).toBeTruthy();
   expect(
     (await request.post("/api/integration/events", { data: {} })).status(),
   ).toBe(503);

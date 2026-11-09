@@ -48,7 +48,7 @@ import Statistics from "./statistics";
 import FollowUp from "./follow-up";
 import CommentForm from "./comment-form";
 import { WhatsAppInbox, useWhatsAppUnread } from "./whatsapp";
-import WhatsAppSettings from "./whatsapp-settings";
+import Integrations from "./integrations";
 import { sourceName, upgradeStore } from "@/lib/sources";
 import { seed, adminId } from "@/lib/demo";
 import {
@@ -145,7 +145,6 @@ export default function CRM() {
     [modal, setModal] = useState<"lead" | "field" | null>(null),
     [message, setMessage] = useState(""),
     [busy, setBusy] = useState(false),
-    [integration, setIntegration] = useState<Record<string, unknown>[]>([]),
     [caseTab, setCaseTab] = useState<string | undefined>(undefined);
   const waUnread = useWhatsAppUnread(demo, !!profile);
   useEffect(() => {
@@ -697,7 +696,7 @@ export default function CRM() {
                                 ? "Administrá los orígenes y los campos de tus solicitudes."
                                 : page === "Equipo"
                                   ? "Administrá accesos y responsabilidades."
-                                  : "Seguimiento de la recepción de formularios."}
+                                  : "Conexiones del CRM y mensajes automáticos de WhatsApp."}
                     </p>
                   </div>
                   {page === "Pipeline" && (
@@ -1243,49 +1242,8 @@ export default function CRM() {
                   ))}
                 </section>
               )}
-              {page === "Integraciones" && isAdmin && <WhatsAppSettings />}
               {page === "Integraciones" && isAdmin && (
-                <section className="card padded">
-                  <span className="badge parte_1_recibida">
-                    Conexión con la web pendiente
-                  </span>
-                  <h2>Recepción de eventos</h2>
-                  <p>
-                    El receptor está implementado y deshabilitado por defecto.
-                    La web, sus correos y Google Ads permanecen sin cambios.
-                  </p>
-                  <p className="muted">
-                    Los eventos de prueba se envían con firma al endpoint
-                    /api/integration/events. Ver docs/INTEGRATION.md.
-                  </p>
-                  <button
-                    className="secondary"
-                    onClick={async () => {
-                      if (!supabase) {
-                        setMessage(
-                          "La demo no recibe eventos externos. Usá el simulador documentado contra un backend de pruebas.",
-                        );
-                        return;
-                      }
-                      const r = await supabase
-                        .from("integration_attempts")
-                        .select("id,status,code,created_at")
-                        .order("created_at", { ascending: false })
-                        .limit(50);
-                      if (r.error) setMessage(r.error.message);
-                      else setIntegration(r.data || []);
-                    }}
-                  >
-                    <RefreshCw size={16} />
-                    Consultar entregas
-                  </button>
-                  {integration.map((r, i) => (
-                    <div className="team-row" key={i}>
-                      {String(r.status)} · {String(r.code || "OK")} ·{" "}
-                      {date(String(r.created_at))}
-                    </div>
-                  ))}
-                </section>
+                <Integrations demo={demo} />
               )}
             </>
           )}
