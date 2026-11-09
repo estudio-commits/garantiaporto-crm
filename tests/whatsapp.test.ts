@@ -119,7 +119,7 @@ const row = (over: Partial<OutboxRow> = {}): OutboxRow => ({
   to_phone: "099 000 001",
   kind: "template",
   body: null,
-  template: { name: "saludo_solicitud", language: "es", params: ["Ana"] },
+  template: { name: "saludo_solicitud", language: "es_UY", params: ["Ana"] },
   attempts: 1,
   created_at: new Date().toISOString(),
   ...over,
@@ -133,7 +133,7 @@ test("builds Cloud API payloads", () => {
     type: "template",
     template: {
       name: "saludo_solicitud",
-      language: { code: "es" },
+      language: { code: "es_UY" },
       components: [
         { type: "body", parameters: [{ type: "text", text: "Ana" }] },
       ],

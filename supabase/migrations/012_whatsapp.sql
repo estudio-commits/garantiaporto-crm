@@ -31,7 +31,7 @@ create table public.wa_settings(
  auto_greeting boolean not null default true,
  greeting_template text not null default 'saludo_solicitud' check(greeting_template ~ '^[a-z0-9_]+$' and length(greeting_template)<=512),
  reopen_template text not null default 'retomar_conversacion' check(reopen_template ~ '^[a-z0-9_]+$' and length(reopen_template)<=512),
- template_language text not null default 'es' check(template_language ~ '^[a-z]{2}(_[A-Z]{2})?$'),
+ template_language text not null default 'es_UY' check(template_language ~ '^[a-z]{2}(_[A-Z]{2})?$'),
  auto_reply_enabled boolean not null default true,
  auto_reply_text text not null default 'Hola, gracias por escribir a Garantía Porto. Recibimos tu mensaje y en breve te responde una persona del equipo.' check(length(trim(auto_reply_text)) between 1 and 1000),
  updated_at timestamptz not null default now()

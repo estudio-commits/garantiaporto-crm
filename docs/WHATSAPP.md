@@ -92,7 +92,7 @@ Durante el cambio hay unos minutos u horas en los que el número no recibe mensa
 
 ### 0.4 Plantillas (WhatsApp Manager → Plantillas de mensajes)
 
-Crear dos plantillas, categoría **Utilidad**, idioma **Español (es)**. El nombre tiene que coincidir con el de la configuración del CRM.
+Creadas el 9/11/2026, categoría **Utilidad**, idioma **Spanish (URY)** (código `es_UY`, el valor por defecto de `wa_settings.template_language`), una variable `{{1}}` con el nombre de pila. `saludo_solicitud` incluye además un botón de respuesta rápida "Sí, enviame la lista". Si se cambia el nombre o el idioma de una plantilla en Meta, actualizar `wa_settings`.
 
 | Nombre                 | Texto sugerido                                                                                                                                                                       |
 | ---------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
