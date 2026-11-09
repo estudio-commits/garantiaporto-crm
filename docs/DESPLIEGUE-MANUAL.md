@@ -78,3 +78,16 @@ Avisame:
 
 - **No vuelvas a una versión anterior del CRM en Vercel** (Instant Rollback) después del paso 2: la versión vieja no funciona con la base nueva. Si algo falla, escribime.
 - El número real se pasa a la API **al final**, cuando todo funcione con el número de prueba (ver `WHATSAPP.md` §0.3).
+
+## Actualizaciones posteriores (por ejemplo, la etapa 3)
+
+Cada entrega nueva trae un ZIP actualizado y, si cambia la base, un script `supabase-migracion-NNN.sql` **solo con lo nuevo**.
+
+1. Descomprimí el ZIP nuevo en una carpeta nueva, abrí `cmd` en ella y ejecutá `npx vercel link` (mismas respuestas que la primera vez) y después `npx vercel --prod`.
+2. En Supabase → SQL Editor, ejecutá el script nuevo una sola vez. Para la etapa 3 es `supabase-migracion-014.sql`; no vuelvas a ejecutar el de 011–013. Para la 014 el orden entre los pasos 1 y 2 no importa: el código y la base son compatibles en ambos sentidos.
+3. Comprobá con `select version from supabase_migrations.schema_migrations order by version;` que la lista termine en el número nuevo.
+
+### Etapa 3: además
+
+- Cargá en Vercel `ANTHROPIC_API_KEY` (Sensitive) **antes** de publicar. Opcional: `ANTHROPIC_MODEL` para usar otro modelo (ver `WHATSAPP.md` → Etapa 3).
+- Después de publicar, seguí "Activación paso a paso" en `WHATSAPP.md` → Etapa 3: empezá en **modo prueba**, solo con tu celular y el de Lucía.
