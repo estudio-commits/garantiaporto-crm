@@ -23,7 +23,7 @@ test("home contains only three shortcuts, unified navigation and filtered destin
   await expect(page.locator(".new-leads")).toContainText("4 nuevas");
   await expect(
     page
-      .locator("nav button")
+      .locator("aside nav button")
       .evaluateAll((nodes) =>
         nodes.slice(0, 4).map((n) => n.textContent?.replace(/\d+$/, "")),
       ),
@@ -300,7 +300,18 @@ test("mobile preview, source management and disabled integration", async ({
 }) => {
   await page.setViewportSize({ width: 390, height: 844 });
   await page.goto("/");
-  await nav(page, "Control de datos").click();
+  // Phones use the top bar; the side menu is hidden.
+  await expect(page.locator("aside.sidebar")).toBeHidden();
+  await page.getByRole("button", { name: "Abrir menú" }).click();
+  const menu = page.getByRole("dialog", { name: "Menú" });
+  await expect(
+    menu.getByRole("button", { name: "Integraciones" }),
+  ).toBeVisible();
+  await page.keyboard.press("Escape");
+  await expect(menu).toHaveCount(0);
+  await page.getByRole("button", { name: "Abrir menú" }).click();
+  await menu.getByRole("button", { name: "Control de datos" }).click();
+  await expect(menu).toHaveCount(0);
   await page
     .getByLabel("Nuevo origen", { exact: true })
     .fill("Referidos ficticios");
@@ -320,7 +331,8 @@ test("mobile preview, source management and disabled integration", async ({
   ).toBeTruthy();
   await page.keyboard.press("Escape");
   await expect(page.getByRole("dialog")).toHaveCount(0);
-  await nav(page, "Integraciones").click();
+  await page.getByRole("button", { name: "Abrir menú" }).click();
+  await menu.getByRole("button", { name: "Integraciones" }).click();
   await expect(
     page.getByRole("heading", { name: "Estado de las conexiones" }),
   ).toBeVisible();
@@ -548,9 +560,9 @@ test("WhatsApp inbox opens the case conversation, sends inside the window and of
 }) => {
   await page.goto("/");
   await expect(nav(page, "WhatsApp")).toBeVisible();
-  await expect(page.locator("nav").getByLabel("mensajes sin leer")).toHaveText(
-    "1",
-  );
+  await expect(
+    page.locator("aside nav").getByLabel("mensajes sin leer"),
+  ).toHaveText("1");
   await nav(page, "WhatsApp").click();
   const chats = page.getByRole("region", { name: "Bandeja de WhatsApp" });
   // Unread chats come first, like WhatsApp.
@@ -582,10 +594,9 @@ test("WhatsApp inbox opens the case conversation, sends inside the window and of
   await expect(
     panel.getByRole("article", { name: "Equipo: Te envío la lista ahora." }),
   ).toContainText("Enviado");
-  await expect(page.locator("nav").getByLabel("mensajes sin leer")).toHaveCount(
-    0,
-    { timeout: 20000 },
-  );
+  await expect(
+    page.locator("aside nav").getByLabel("mensajes sin leer"),
+  ).toHaveCount(0, { timeout: 20000 });
   await expect(
     chats.getByRole("button", {
       name: "Abrir conversación con Bruno Demostración",
