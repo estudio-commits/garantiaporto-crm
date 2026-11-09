@@ -161,6 +161,56 @@ Cuando el cliente manda un **PDF, una imagen o un Word** (hasta 20 MB) por Whats
 
 **Privacidad.** Los documentos quedan en una unidad compartida de la empresa: el acceso lo dan los miembros de la unidad y el CRM nunca crea enlaces públicos. Los archivos pasan por Meta y por el servidor del CRM solo en tránsito.
 
+## Etapa 3 — Asistente con IA
+
+### Qué hace
+
+- **Cuándo responde:**
+  - en los **casos web**, apenas el cliente contesta el saludo o toca "Sí, enviame la lista", sin esperar a Lucía;
+  - en las **consultas directas** por WhatsApp, desde el primer mensaje.
+- **Qué hace en la conversación:**
+  - se presenta como asistente automático;
+  - pregunta la situación de ingresos y envía la **lista oficial de documentos**, que el CRM manda con el texto aprobado sin que el modelo lo reescriba;
+  - responde **solo** con las preguntas frecuentes aprobadas (`docs/WHATSAPP-FAQ.md` → `lib/bot-knowledge.ts`).
+- **Consultas directas:** pide nombre y apellido, monto y moneda del alquiler, tipo de garantía y situación de ingresos, y los carga en la ficha. Solo completa datos vacíos; en los casos web nunca cambia el nombre ni el tipo de garantía.
+- **Cédula:** si el cliente la escribe, la registra el servidor y **no se envía al modelo**; el modelo ve "[cédula]".
+- **Deriva a Lucía cuando corresponde:**
+  - el cliente pide una persona, reclama o pregunta por aprobación, rechazo o Clearing;
+  - pide el costo exacto (el asistente primero pide el monto del alquiler);
+  - la garantía es universitaria o rural;
+  - no sabe la respuesta, o pasaron 40 respuestas automáticas.
+
+  Al derivar, el cliente recibe el aviso aprobado (con el horario si es fuera de hora), el chat queda marcado **"Requiere atención"** en la bandeja y el asistente se pausa.
+
+- **Cuando alguien del equipo escribe** en un chat desde el CRM, el asistente se pausa en ese chat. Se reactiva con **Reactivar asistente** en la pestaña WhatsApp del caso.
+- **Nunca** dice si una garantía está aprobada o rechazada, no calcula costos y no pide contraseñas ni tarjetas.
+
+### Activación paso a paso
+
+1. **Clave de Anthropic.** Crear una clave en [console.anthropic.com](https://console.anthropic.com/) → API Keys, con un **límite de gasto mensual** en Billing. Cargarla en Vercel como `ANTHROPIC_API_KEY` (Sensitive) y volver a publicar.
+2. **Migración 014.** Aplicar `supabase/migrations/014_whatsapp_bot.sql`; en publicación manual, con el script `supabase-migracion-014.sql`.
+3. **Configuración.** En el CRM → **Integraciones → WhatsApp → Asistente con IA**:
+   - marcar **Asistente activado** y dejar **Modo prueba** marcado;
+   - cargar tu celular y el de Lucía en **Números de prueba**;
+   - guardar.
+4. **Prueba.** Escribirle al número desde esos celulares y probar distintas conversaciones: preguntas frecuentes, pedir la lista, mandar un PDF, pedir una persona, preguntar el costo.
+5. **Activación para clientes.** Cuando las respuestas estén bien, desmarcar **Modo prueba**: el asistente pasa a responder a todos.
+
+Para apagarlo en cualquier momento: desmarcar **Asistente activado**. Vuelve la respuesta automática fija, si está activada.
+
+### Modelo y costo
+
+- Usa la API de Claude (Anthropic) con el modelo **Claude Opus 5.5** (`claude-opus-5-5`), en esfuerzo bajo, con caché de instrucciones y con **respaldo automático** (fallback) a otro modelo si el principal rechaza un mensaje.
+- **Costo estimado:** unos US$ 0,02–0,03 por mensaje del cliente. Con 100–200 conversaciones al mes, **~US$ 25–50/mes**.
+- Para bajar el costo, se puede cambiar el modelo con la variable `ANTHROPIC_MODEL` en Vercel:
+
+| Modelo                                                       | Valor de `ANTHROPIC_MODEL` | Costo estimado/mes |
+| ------------------------------------------------------------ | -------------------------- | ------------------ |
+| Claude Sonnet 5.5 (rápido y capaz)                           | `claude-sonnet-5-5`        | ~US$ 12–25         |
+| Claude Haiku 5.5 (el más económico, sin respaldo automático) | `claude-haiku-5-5`         | ~US$ 1–3           |
+
+Conviene probar en modo prueba antes de cambiar de modelo.
+
 ## Prueba antes de usar el número real
 
 1. Con el número de prueba: agregar tu celular como destinatario de prueba en Meta. Después:
@@ -190,7 +240,7 @@ Por ahora se edita desde Supabase. Una pantalla de configuración en "Integracio
 | 0             | Trámites de Meta, plantillas, consentimiento                                                                                                          | A cargo de Garantía Porto |
 | 1             | Base de datos, webhook, envíos con cola y reintentos, saludo automático, casos desde WhatsApp, respuesta automática, pestaña y bandeja WhatsApp, demo | Listo para revisar        |
 | 2             | Documentos → Google Drive (unidad compartida de Workspace, carpeta por caso, reintentos)                                                              | Listo para revisar        |
-| 3             | Asistente con IA, base de respuestas, documentos por garantía, derivación, configuración en pantalla, piloto                                          | Pendiente                 |
+| 3             | Asistente con IA (Claude), lista oficial de documentos, carga de datos, derivación, pausa por intervención humana, configuración en Integraciones     | Listo para revisar        |
 
 ## Costos estimados (100–200 conversaciones/mes)
 
@@ -198,7 +248,7 @@ Por ahora se edita desde Supabase. Una pantalla de configuración en "Integracio
 | -------------------------------------------------------------------------------------------------- | ------------------------ |
 | Saludos con plantilla de utilidad (~US$ 0,011 c/u; ~US$ 0,074 si Meta la clasifica como marketing) | US$ 2–15                 |
 | Respuestas del equipo y automáticas: las primeras 1.000 por mes gratis, después ~US$ 0,011 c/u     | US$ 0–25                 |
-| IA (etapa 3)                                                                                       | US$ 5–30                 |
+| IA (etapa 3, Claude Opus 5.5; ver tabla de modelos)                                                | US$ 25–50                |
 | Vercel Pro y Supabase Pro (si todavía no se pagan)                                                 | ~US$ 45                  |
 
 Tarifas de la región "Resto de Latinoamérica", vigentes desde el 1/10/2026 según fuentes de proveedores de Meta. Verificarlas en WhatsApp Manager.

@@ -278,6 +278,9 @@ export function WhatsAppPanel({
           <RefreshCw size={16} />
         </button>
       </div>
+      {conversation && (
+        <BotStatus conversation={conversation} demo={demo} changed={load} />
+      )}
       {!valid && (
         <p className="alert" role="alert">
           El celular del caso no tiene un formato válido para WhatsApp.
@@ -469,6 +472,7 @@ export function WhatsAppInbox({
     .filter((c) => c.application_id && byId.has(c.application_id))
     .sort(
       (a, b) =>
+        Number(b.needs_human) - Number(a.needs_human) ||
         Number(b.unread_count > 0) - Number(a.unread_count > 0) ||
         (b.last_message_at ?? "").localeCompare(a.last_message_at ?? ""),
     );
@@ -509,6 +513,9 @@ export function WhatsAppInbox({
                   {a.full_name}
                   {c.unread_count > 0 && (
                     <span className="nav-count">{c.unread_count}</span>
+                  )}
+                  {c.needs_human && (
+                    <span className="wa-flag">Requiere atención</span>
                   )}
                 </span>
                 <span className="wa-preview">
@@ -578,5 +585,71 @@ function MediaState({
         </>
       )}
     </small>
+  );
+}
+
+async function setBot(demo: boolean, c: WaConversation, paused: boolean) {
+  if (demo) {
+    const d = demoLoad();
+    d.conversations = d.conversations.map((x) =>
+      x.id === c.id
+        ? {
+            ...x,
+            bot_paused: paused,
+            needs_human: paused ? x.needs_human : false,
+            handoff_reason: paused ? x.handoff_reason : null,
+          }
+        : x,
+    );
+    demoSave(d);
+    return;
+  }
+  const r = await supabase!.rpc("wa_set_bot", {
+    p_conversation: c.id,
+    p_paused: paused,
+  });
+  if (r.error) throw Error(r.error.message);
+}
+
+/** Shows whether the assistant answers this chat and lets the team pause or resume it. */
+function BotStatus({
+  conversation: c,
+  demo,
+  changed,
+}: {
+  conversation: WaConversation;
+  demo: boolean;
+  changed: () => void;
+}) {
+  const [busy, setBusy] = useState(false);
+  const toggle = async (paused: boolean) => {
+    setBusy(true);
+    try {
+      await setBot(demo, c, paused);
+      changed();
+    } finally {
+      setBusy(false);
+    }
+  };
+  return (
+    <div
+      className={`wa-bot ${c.needs_human ? "attention" : c.bot_paused ? "paused" : "active"}`}
+      role="status"
+    >
+      <span>
+        {c.needs_human
+          ? `Requiere atención${c.handoff_reason ? `: ${c.handoff_reason}` : ""}. El asistente está pausado.`
+          : c.bot_paused
+            ? "El asistente está pausado: responde el equipo."
+            : "El asistente responde automáticamente (si está activado en Integraciones)."}
+      </span>
+      <button
+        className="link-button"
+        disabled={busy}
+        onClick={() => toggle(!c.bot_paused)}
+      >
+        {c.bot_paused ? "Reactivar asistente" : "Pausar asistente"}
+      </button>
+    </div>
   );
 }

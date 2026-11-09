@@ -1,5 +1,6 @@
 import { after } from "next/server";
 import { parseWebhook } from "@/lib/whatsapp";
+import { runBotTurn } from "@/lib/bot";
 import { driveConfig } from "@/lib/drive";
 import {
   processCaseFolders,
@@ -56,6 +57,7 @@ export async function POST(req: Request) {
   if (!messages.length && !statuses.length) return Response.json({ ok: true });
   // The raw log helps support and replay; it is admin-only and pruned per the retention policy.
   await db.from("wa_webhook_events").insert({ payload });
+  const botConversations = new Set<string>();
   try {
     for (const s of statuses) {
       const r = await db.rpc("wa_record_status", {
@@ -69,6 +71,8 @@ export async function POST(req: Request) {
     for (const m of messages) {
       const r = await db.rpc("wa_record_inbound", { m });
       if (r.error) throw Error(r.error.message);
+      if (r.data?.bot_active)
+        botConversations.add(String(r.data.conversation_id));
     }
   } catch {
     // A 5xx makes Meta redeliver; recording is idempotent by message id.
@@ -79,6 +83,9 @@ export async function POST(req: Request) {
       await processOutbox(db, cfg, 10).catch(() => undefined);
       await processCaseFolders(db, driveConfig(), 5).catch(() => undefined);
       await processMedia(db, cfg, driveConfig(), 5).catch(() => undefined);
+      // Documents are filed first so the assistant can confirm them in its reply.
+      for (const id of botConversations)
+        await runBotTurn(db, cfg, id).catch(() => undefined);
     });
   return Response.json({ ok: true });
 }

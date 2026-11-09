@@ -14,6 +14,8 @@ export type WaConversation = {
   needs_human: boolean;
   bot_paused: boolean;
   created_at: string;
+  handoff_reason?: string | null;
+  bot_state?: Record<string, unknown>;
 };
 
 export type WaMessage = {

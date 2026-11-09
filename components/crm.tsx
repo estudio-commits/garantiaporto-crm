@@ -48,6 +48,7 @@ import Statistics from "./statistics";
 import FollowUp from "./follow-up";
 import CommentForm from "./comment-form";
 import { WhatsAppInbox, useWhatsAppUnread } from "./whatsapp";
+import WhatsAppSettings from "./whatsapp-settings";
 import { sourceName, upgradeStore } from "@/lib/sources";
 import { seed, adminId } from "@/lib/demo";
 import {
@@ -1242,6 +1243,7 @@ export default function CRM() {
                   ))}
                 </section>
               )}
+              {page === "Integraciones" && isAdmin && <WhatsAppSettings />}
               {page === "Integraciones" && isAdmin && (
                 <section className="card padded">
                   <span className="badge parte_1_recibida">

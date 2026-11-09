@@ -152,5 +152,51 @@ do $$begin
  begin perform claim_case_folders(1);raise exception 'Seller claimed folders';exception when insufficient_privilege then null;end;
 end $$;
 reset role;
+-- Etapa 3 (migration 014): assistant activation, takeover, locks and case-update rules.
+do $$declare r jsonb; c uuid; aid uuid; begin
+ update wa_settings set bot_enabled=true,bot_test_mode=true,bot_test_numbers='{59899000020}',auto_reply_enabled=true;
+ r=wa_record_inbound('{"wamid":"wamid.BOT1","from":"59899000020","profile_name":"Bot Ficticio","kind":"text","body":"Hola"}');
+ if not (r->>'bot_active')::boolean then raise exception 'Bot not active for test number';end if;
+ c=(r->>'conversation_id')::uuid; aid=(r->>'application_id')::uuid;
+ if exists(select 1 from wa_outbox where application_id=aid and purpose='auto_reply') then raise exception 'Auto reply sent while bot active';end if;
+ r=wa_record_inbound('{"wamid":"wamid.BOT2","from":"59899000021","kind":"text","body":"Hola"}');
+ if (r->>'bot_active')::boolean then raise exception 'Bot active outside test list';end if;
+ if not exists(select 1 from wa_outbox where application_id=(r->>'application_id')::uuid and purpose='auto_reply') then raise exception 'Auto reply missing outside test list';end if;
+ begin update wa_settings set bot_test_numbers='{abc}';raise exception 'Invalid test number accepted';exception when check_violation then null;end;
+ if not wa_bot_claim(c) then raise exception 'Claim failed';end if;
+ if wa_bot_claim(c) then raise exception 'Double claim';end if;
+ perform wa_bot_release(c,'{"income_profile":"empleado"}',true);
+ if (select bot_turns from wa_conversations where id=c)<>1 or (select bot_state->>'income_profile' from wa_conversations where id=c)<>'empleado' or (select bot_lock_until from wa_conversations where id=c) is not null then raise exception 'Release state';end if;
+ perform wa_bot_update_case(aid,'{"full_name":"Bruno Ficticio Pérez","rent_amount":25000,"rent_currency":"UYU","guarantee_type":"universitaria","national_id":"1.234.567-2"}');
+ if (select full_name from applications where id=aid)<>'Bruno Ficticio Pérez' or (select guarantee_type from applications where id=aid)<>'universitaria' or (select rent_amount from applications where id=aid)<>25000 or (select national_id from applications where id=aid)<>'12345672' then raise exception 'Bot case update failed';end if;
+ perform wa_bot_update_case(aid,'{"rent_amount":99999,"rent_currency":"USD","national_id":"7.654.321-0"}');
+ if (select rent_amount from applications where id=aid)<>25000 or (select rent_currency from applications where id=aid)<>'UYU' or (select national_id from applications where id=aid)<>'12345672' then raise exception 'Bot overwrote case data';end if;
+ perform wa_bot_update_case((select id from applications where full_name='Ana Ficticia'),'{"full_name":"Otro Nombre","guarantee_type":"rural"}');
+ if not exists(select 1 from applications where full_name='Ana Ficticia' and guarantee_type<>'rural') then raise exception 'Bot changed a web case';end if;
+ insert into wa_messages(conversation_id,application_id,direction,author,kind,body,status) values(c,aid,'out','human','text','Hola, soy Lucía','sent');
+ if not (select bot_paused from wa_conversations where id=c) then raise exception 'Human takeover did not pause bot';end if;
+ r=wa_record_inbound('{"wamid":"wamid.BOT3","from":"59899000020","kind":"text","body":"Gracias"}');
+ if (r->>'bot_active')::boolean then raise exception 'Bot active after takeover';end if;
+ perform wa_bot_handoff(c,'Prueba de derivación');
+ if not (select needs_human from wa_conversations where id=c) then raise exception 'Handoff flag missing';end if;
+ perform set_config('test.botconv',c::text,false);
+end $$;
+set local request.jwt.claim.sub='00000000-0000-4000-8000-0000000000a2';
+set local role authenticated;
+do $$begin
+ perform wa_set_bot(current_setting('test.botconv')::uuid,false);
+ begin perform wa_bot_claim(current_setting('test.botconv')::uuid);raise exception 'Seller claimed bot turn';exception when insufficient_privilege then null;end;
+ begin perform wa_bot_update_case(gen_random_uuid(),'{}');raise exception 'Seller updated case via bot';exception when insufficient_privilege then null;end;
+end $$;
+reset role;
+do $$begin if not (select bot_paused from wa_conversations where id=current_setting('test.botconv')::uuid) then raise exception 'Seller without access resumed bot';end if;end $$;
+set local request.jwt.claim.sub='00000000-0000-4000-8000-0000000000a1';
+set local role authenticated;
+do $$begin
+ perform wa_set_bot(current_setting('test.botconv')::uuid,false);
+ if (select bot_paused or needs_human from wa_conversations where id=current_setting('test.botconv')::uuid) then raise exception 'Admin could not resume bot';end if;
+ update wa_settings set bot_enabled=false;
+end $$;
+reset role;
 rollback;
 \echo 'WhatsApp checks passed'
