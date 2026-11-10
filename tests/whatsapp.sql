@@ -144,6 +144,19 @@ do $$declare aid uuid; n int; begin
  if (select drive_folder_url from applications where id=aid)<>'https://drive.google.com/drive/folders/CASEFOLDER123' or (select status from drive_folder_queue where application_id=aid)<>'done' then raise exception 'Case folder not stored';end if;
  insert into applications(full_name,phone,national_id,drive_folder_url) values('Con Carpeta','099 000 011','1234567-8','https://drive.google.com/drive/folders/MANUAL123456') returning id into aid;
  if exists(select 1 from drive_folder_queue where application_id=aid) then raise exception 'Folder queued for case with folder';end if;
+ -- Migration 015: a case whose folder was created before the CI arrived is queued again to rename it.
+ insert into applications(full_name,phone) values('Sin Cedula Ficticia','099 000 012') returning id into aid;
+ perform claim_case_folders(20);
+ perform complete_case_folder(aid,'https://drive.google.com/drive/folders/LATECI123456',null,false);
+ if (select status from drive_folder_queue where application_id=aid)<>'done' then raise exception 'Folder without CI not stored';end if;
+ update applications set summary='Sin cambio de cédula' where id=aid;
+ if (select status from drive_folder_queue where application_id=aid)<>'done' then raise exception 'Folder requeued without CI change';end if;
+ update applications set national_id='2345678-9' where id=aid;
+ if (select status from drive_folder_queue where application_id=aid)<>'pending' then raise exception 'Folder not requeued after CI arrived';end if;
+ select count(*) into n from claim_case_folders(20) where application_id=aid and national_id='23456789' and drive_folder_url like '%LATECI123456';
+ if n<>1 then raise exception 'Folder rename not claimed';end if;
+ perform complete_case_folder(aid,'https://drive.google.com/drive/folders/LATECI123456',null,false);
+ if (select status from drive_folder_queue where application_id=aid)<>'done' then raise exception 'Folder rename not completed';end if;
 end $$;
 set local request.jwt.claim.sub='00000000-0000-4000-8000-0000000000a2';
 set local role authenticated;

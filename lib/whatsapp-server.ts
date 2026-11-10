@@ -14,6 +14,7 @@ import {
 import {
   DriveError,
   ensureCaseFolder,
+  syncCaseFolderName,
   folderIdFromUrl,
   folderUrl,
   uploadFile,
@@ -467,16 +468,26 @@ export async function processCaseFolders(
       error: string | null = null,
       retry = false;
     try {
-      url = folderIdFromUrl(row.drive_folder_url)
-        ? row.drive_folder_url
-        : folderUrl(
-            await ensureCaseFolder(
-              drive,
-              row.application_id,
-              caseFolderName({ ...row, id: row.application_id }),
-              fetcher,
-            ),
-          );
+      const existing = folderIdFromUrl(row.drive_folder_url);
+      if (existing) {
+        // Already has a folder: the case was queued again because its CI arrived later.
+        await syncCaseFolderName(
+          drive,
+          existing,
+          row.application_id,
+          caseFolderName({ ...row, id: row.application_id }),
+          fetcher,
+        );
+        url = row.drive_folder_url;
+      } else
+        url = folderUrl(
+          await ensureCaseFolder(
+            drive,
+            row.application_id,
+            caseFolderName({ ...row, id: row.application_id }),
+            fetcher,
+          ),
+        );
     } catch (e) {
       error = e instanceof Error ? e.message : "Error al crear la carpeta.";
       retry = e instanceof DriveError ? e.retry : true;

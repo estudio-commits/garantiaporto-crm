@@ -166,6 +166,48 @@ export async function ensureCaseFolder(
   return String(created.id);
 }
 
+/** A folder still named with the short case id because the CI was not known when it was created. */
+export const PLACEHOLDER_NAME = / · Solicitud [0-9a-f]{8}$/;
+
+/**
+ * Renames a case folder once its CI is known. Only touches folders the CRM created for this case
+ * (tagged crm_case) that still carry the placeholder name, so manual renames are never overwritten.
+ */
+export async function syncCaseFolderName(
+  cfg: DriveConfig,
+  folderId: string,
+  caseId: string,
+  name: string,
+  fetcher: typeof fetch = fetch,
+): Promise<boolean> {
+  if (!FOLDER_ID.test(folderId))
+    throw new DriveError("Identificador de carpeta inválido.", false);
+  if (PLACEHOLDER_NAME.test(name)) return false;
+  const token = await driveToken(cfg, fetcher);
+  const file = await driveJson(
+    token,
+    `${API}/${folderId}?${new URLSearchParams({ fields: "name,appProperties", supportsAllDrives: "true" })}`,
+    { method: "GET" },
+    fetcher,
+  );
+  const tag = (file.appProperties as Record<string, string> | undefined)
+    ?.crm_case;
+  const current = String(file.name ?? "");
+  if (tag !== caseId || current === name || !PLACEHOLDER_NAME.test(current))
+    return false;
+  await driveJson(
+    token,
+    `${API}/${folderId}?supportsAllDrives=true&fields=id`,
+    {
+      method: "PATCH",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ name: name.slice(0, 200) }),
+    },
+    fetcher,
+  );
+  return true;
+}
+
 export async function uploadFile(
   cfg: DriveConfig,
   folderId: string,
