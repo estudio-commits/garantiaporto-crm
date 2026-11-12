@@ -33,6 +33,7 @@ La lista carga los registros autorizados por RLS antes de paginar: requiere pagi
 - `tests/`: negocio, SQL y navegador.
 - `docs/INTEGRATION.md`: contrato y preparación de integración.
 - `docs/OPERATIONS.md`: seguridad, operación y próximos pasos.
+- `docs/PENDIENTES.md`: mejoras acordadas para hacer más adelante.
 
 ## Panel actualizado
 
