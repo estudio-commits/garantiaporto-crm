@@ -283,7 +283,9 @@ const toolUse = (name: string, input: Row, id = "tu_1") => ({
 });
 
 test("assistant sends the official document list, records the profile and replies", async () => {
-  const { db, calls } = fakeDb();
+  const { db, calls } = fakeDb({
+    conversation: { bot_state: { fit: "tradicional" } },
+  });
   const { client, requests } = fakeClient([
     {
       stop_reason: "tool_use",
@@ -314,6 +316,7 @@ test("assistant sends the official document list, records the profile and replie
   assert.doesNotMatch(String(calls.outbox[2].body), /Mensaje automático/);
   const release = calls.rpc.find(([n]) => n === "wa_bot_release")!;
   assert.deepEqual(release[1].p_state, {
+    fit: "tradicional",
     income_profile: "empleado",
     documents_sent_for: "empleado",
   });
@@ -477,12 +480,10 @@ test("cost estimate is computed by the server, not by the model", async () => {
     {
       stop_reason: "tool_use",
       content: [
-        toolUse("calcular_referencias", {
+        toolUse("estimar_costo", {
           modalidad: "tradicional",
           monto_alquiler: 25000,
           moneda: "UYU",
-          ingresos_liquidos_totales: null,
-          cantidad_estudiantes: null,
         }),
       ],
     },
@@ -501,11 +502,16 @@ test("cost estimate is computed by the server, not by the model", async () => {
   const toolResult = JSON.stringify(
     (requests[1] as { messages: unknown[] }).messages.at(-1),
   );
-  assert.match(toolResult, /Costo aproximado: \$ 17\.500/);
+  assert.match(toolResult, /Sale aproximadamente \$ 17\.500/);
 });
 
 // ---- Conocimiento del 12/11/2026: botones, formulario web, rural y cuentas ----
-import { references, siteButton, webConfirmation } from "../lib/bot-knowledge";
+import {
+  costMessage,
+  evaluateRent,
+  siteButton,
+  webConfirmation,
+} from "../lib/bot-knowledge";
 
 const inbound = (body: string, kind = "text") => ({
   direction: "in",
@@ -685,77 +691,149 @@ test("web confirmation asks only for what is missing; universitaria asks for stu
   );
 });
 
-test("references: cost, 30% rule and university caps are computed in code", () => {
+test("evaluateRent speaks in minimum income, offers alternatives and never mentions cost", () => {
   const base = {
     moneda: "UYU" as const,
     ingresos_liquidos_totales: null,
     cantidad_estudiantes: null,
   };
-  const trad = references({
+  const short = evaluateRent({
     ...base,
     modalidad: "tradicional",
-    monto_alquiler: 25000,
+    monto_alquiler: 30000,
+    ingresos_liquidos_totales: 90000,
   });
-  assert.match(trad, /Costo aproximado: \$ 17\.500/);
-  assert.match(trad, /\$ 83\.334/);
-  const mixed = references({
+  assert.equal(short.ok, false);
+  assert.match(
+    short.facts,
+    /Para un alquiler de \$ 30\.000 se necesitan ingresos líquidos de \$ 100\.000/,
+  );
+  assert.match(short.guidance, /No envíes documentos/);
+  assert.match(short.guidance, /analice el caso en particular/);
+  for (const f of [short.facts, short.guidance]) {
+    assert.doesNotMatch(f, /30%|referencia|aprobaci|costo/i);
+  }
+  const summed = evaluateRent({
     ...base,
     modalidad: "tradicional",
     monto_alquiler: 22700,
     ingresos_liquidos_totales: 90000,
   });
-  assert.match(mixed, /25,2% de los ingresos: dentro de la referencia del 30%/);
-  assert.match(mixed, /Nada de esto es una aprobación/);
-  assert.match(
-    references({
-      ...base,
-      modalidad: "tradicional",
-      monto_alquiler: 20000,
-      ingresos_liquidos_totales: 50000,
-    }),
-    /por encima de la referencia.*\$ 15\.000/s,
+  assert.equal(summed.ok, true);
+  assert.match(summed.facts, /alcanzan/);
+  assert.equal(
+    evaluateRent({ ...base, modalidad: "tradicional", monto_alquiler: 25000 })
+      .ok,
+    false,
   );
   assert.match(
-    references({
-      ...base,
-      modalidad: "universitaria",
-      monto_alquiler: 37000,
-      cantidad_estudiantes: 3,
-    }),
-    /tope es \$ 45\.000 mensuales: el alquiler está dentro del tope/,
+    evaluateRent({ ...base, modalidad: "tradicional", monto_alquiler: 25000 })
+      .facts,
+    /\$ 83\.334/,
   );
-  assert.match(
-    references({
+  const three = evaluateRent({
+    ...base,
+    modalidad: "universitaria",
+    monto_alquiler: 37000,
+    cantidad_estudiantes: 3,
+  });
+  assert.equal(three.ok, true);
+  assert.match(three.facts, /\$ 45\.000/);
+  assert.equal(
+    evaluateRent({
       ...base,
       modalidad: "universitaria",
       monto_alquiler: 18000,
       cantidad_estudiantes: 1,
-    }),
-    /lo supera\. No lo rechaces: derivá/,
+    }).ok,
+    false,
   );
   assert.match(
-    references({
+    evaluateRent({
       ...base,
       modalidad: "universitaria",
       monto_alquiler: 40000,
       cantidad_estudiantes: 4,
-    }),
-    /admite hasta 3\. Derivá/,
+    }).guidance,
+    /derivá/,
   );
   assert.throws(
-    () => references({ ...base, modalidad: "rural", monto_alquiler: 50000 }),
+    () => evaluateRent({ ...base, modalidad: "rural", monto_alquiler: 1 }),
     /rural/,
   );
-  assert.throws(
-    () =>
-      references({
-        ...base,
-        moneda: "USD",
-        modalidad: "universitaria",
-        monto_alquiler: 500,
-      }),
-    /pesos/,
+  assert.equal(
+    costMessage("tradicional", 25000, "UYU"),
+    "Sale aproximadamente $ 17.500 y se puede pagar hasta en 12 cuotas sin recargo con OCA, Visa, Master o Cabal.",
   );
+  assert.throws(() => costMessage("rural", 25000, "UYU"), /rural/);
+});
+
+test("the document list is not sent until evaluar_alquiler says the operation applies", async () => {
+  const { db, calls } = fakeDb();
+  const { client, requests } = fakeClient([
+    {
+      stop_reason: "tool_use",
+      content: [
+        toolUse("enviar_lista_de_documentos", {
+          situacion_ingresos: "independiente",
+        }),
+      ],
+    },
+    {
+      stop_reason: "tool_use",
+      content: [
+        toolUse(
+          "evaluar_alquiler",
+          {
+            modalidad: "tradicional",
+            monto_alquiler: 30000,
+            moneda: "UYU",
+            ingresos_liquidos_totales: 90000,
+            cantidad_estudiantes: null,
+          },
+          "tu_2",
+        ),
+      ],
+    },
+    {
+      stop_reason: "end_turn",
+      content: [
+        text(
+          "Para $ 30.000 se necesitan $ 100.000 líquidos. ¿Podés sumar los ingresos de otra persona?",
+        ),
+      ],
+    },
+  ]);
+  await runBotTurn(db, cfg, "conv-1", client);
+  assert.ok(
+    !calls.outbox.some((o) => /Documentación para/.test(String(o.body))),
+    "no document list before the evaluation",
+  );
+  const first = JSON.stringify(
+    (requests[1] as { messages: unknown[] }).messages.at(-1),
+  );
+  assert.match(first, /Todavía no está confirmado que aplica/);
+  const second = JSON.stringify(
+    (requests[2] as { messages: unknown[] }).messages.at(-1),
+  );
+  assert.match(second, /se necesitan ingresos líquidos de \$ 100\.000/);
+  const release = calls.rpc.find(([n]) => n === "wa_bot_release")!;
+  assert.equal((release[1].p_state as Row).fit, null);
+});
+
+test("system prompt asks for short, on-topic answers", () => {
+  const sys = systemPrompt(
+    "Lucía Ussumorel",
+    "lunes a viernes",
+    "09:00",
+    "17:00",
+  );
+  assert.match(sys, /entre 20 y 30 palabras/);
+  assert.match(
+    sys,
+    /Nunca envíes la lista antes de que evaluar_alquiler diga que aplica/,
+  );
+  assert.match(sys, /estimar_costo: .*solo si el cliente pregunta/);
 });
 
 test("the assistant's knowledge is generated from docs/WHATSAPP-FAQ.md and up to date", async () => {
