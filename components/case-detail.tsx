@@ -79,6 +79,7 @@ export default function CaseDetail({
         issued_reference_unknown: "Referencia de emisión pendiente",
         decision_date_unknown: "Fecha original de aprobación no informada",
         drive_folder_url: "Carpeta de Drive",
+        wa_consent: "Acepta contacto por WhatsApp",
         summary: "Comentarios",
         national_id: "Cédula",
         monthly_income: "Ingresos",
@@ -212,6 +213,7 @@ export default function CaseDetail({
                   guarantee_type: f.get("type"),
                   requested_date: f.get("requested_date") || null,
                   drive_folder_url: url || null,
+                  wa_consent: f.get("wa_consent") === "on",
                   summary: f.get("summary"),
                 });
               }}
@@ -286,6 +288,18 @@ export default function CaseDetail({
                   />
                 </label>
               </div>
+              <label className="check consent-check">
+                <input
+                  name="wa_consent"
+                  type="checkbox"
+                  defaultChecked={!!a.wa_consent}
+                />
+                El cliente aceptó que lo contactemos por WhatsApp
+              </label>
+              <p className="muted">
+                Se marca solo si lo aceptó en el formulario web o si escribió
+                por WhatsApp. Si lo aceptó por otro medio, tildalo una vez.
+              </p>
               <label>
                 Carpeta de Google Drive
                 <input
@@ -566,7 +580,14 @@ export default function CaseDetail({
       ) : tab === "Marketing" ? (
         <Marketing app={a} admin={admin} />
       ) : tab === "WhatsApp" ? (
-        <WhatsAppPanel app={a} profile={profile} demo={!supabase} />
+        <WhatsAppPanel
+          app={a}
+          profile={profile}
+          demo={!supabase}
+          onConsent={() =>
+            mutate("applications", { id: a.id, wa_consent: true })
+          }
+        />
       ) : (
         <section className="card padded">
           <h2>Historial y seguimientos</h2>

@@ -57,7 +57,7 @@ export async function POST(req: Request) {
   });
   const { data: app } = await asUser
     .from("applications")
-    .select("id,full_name,phone,attribution,archived")
+    .select("id,full_name,phone,attribution,archived,wa_consent")
     .eq("id", application_id)
     .maybeSingle();
   if (!app) return fail("No tenés acceso a este caso.", 403);
@@ -94,6 +94,7 @@ export async function POST(req: Request) {
   } else {
     const hasConsent =
       consent === true ||
+      app.wa_consent === true ||
       !!String(
         (app.attribution as Record<string, unknown>)?.consent_evidence ?? "",
       ).trim() ||
@@ -103,6 +104,20 @@ export async function POST(req: Request) {
         "Confirmá que el cliente aceptó ser contactado por WhatsApp.",
         422,
       );
+    // Consent confirmed by the team is stored on the case (audited as the user) so it is asked only once.
+    if (consent === true && !app.wa_consent) {
+      const saved = await asUser
+        .from("applications")
+        .update({ wa_consent: true })
+        .eq("id", application_id)
+        .select("id");
+      // Sellers who can see but not edit the case: the server records it (audited as "Sistema").
+      if (!saved.data?.length)
+        await db
+          .from("applications")
+          .update({ wa_consent: true })
+          .eq("id", application_id);
+    }
     row = {
       purpose: action,
       kind: "template",

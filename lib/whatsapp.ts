@@ -385,3 +385,56 @@ export const initials = (name: string) =>
     .slice(0, 2)
     .map((w) => w[0]!.toUpperCase())
     .join("") || "?";
+
+export type TemplatePreview = {
+  name: string;
+  language: string;
+  status: string;
+  header: string | null;
+  body: string;
+  footer: string | null;
+  buttons: string[];
+};
+type MetaTemplate = {
+  name?: string;
+  language?: string;
+  status?: string;
+  components?: {
+    type?: string;
+    format?: string;
+    text?: string;
+    buttons?: { text?: string }[];
+  }[];
+};
+
+/** Picks the template in the configured language (or the first one) and flattens its text parts. */
+export function templatePreview(
+  list: MetaTemplate[],
+  name: string,
+  language: string,
+): TemplatePreview | null {
+  const same = list.filter((t) => t.name === name);
+  const t = same.find((x) => x.language === language) ?? same[0];
+  if (!t) return null;
+  const part = (type: string) =>
+    t.components?.find((c) => c.type?.toUpperCase() === type);
+  const header = part("HEADER");
+  return {
+    name,
+    language: String(t.language ?? ""),
+    status: String(t.status ?? ""),
+    header:
+      header?.format && header.format.toUpperCase() !== "TEXT"
+        ? `[${header.format.toLowerCase()}]`
+        : (header?.text ?? null),
+    body: String(part("BODY")?.text ?? ""),
+    footer: part("FOOTER")?.text ?? null,
+    buttons: (part("BUTTONS")?.buttons ?? [])
+      .map((b) => String(b.text ?? ""))
+      .filter(Boolean),
+  };
+}
+
+/** Shows template variables the way the CRM fills them: {{1}} is the client's first name. */
+export const fillPreview = (text: string) =>
+  text.replace(/\{\{\s*1\s*\}\}/g, "[nombre del cliente]");

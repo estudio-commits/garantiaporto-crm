@@ -211,5 +211,35 @@ do $$begin
  update wa_settings set bot_enabled=false;
 end $$;
 reset role;
+-- Migration 016: WhatsApp consent stored on the case; team messages add one history entry per day.
+do $$declare aid uuid; other uuid; c uuid; begin
+ insert into applications(full_name,phone,source,completion,attribution) values('Consentimiento Web','099 000 020','web','parte_1_recibida','{"consent_evidence":"Acepto"}') returning id into aid;
+ if not (select wa_consent from applications where id=aid) then raise exception 'Web consent not stored';end if;
+ insert into applications(full_name,phone,national_id) values('Escribe Primero','099 000 061','3456789-0') returning id into aid;
+ if (select wa_consent from applications where id=aid) then raise exception 'Consent without evidence';end if;
+ perform wa_record_inbound('{"wamid":"wamid.C016","from":"59899000061","kind":"text","body":"Hola"}');
+ if not (select wa_consent from applications where id=aid) then raise exception 'Inbound message did not record consent';end if;
+ select id into c from wa_conversations where wa_id='59899000061';
+ if exists(select 1 from notes where application_id=aid) then raise exception 'Inbound message created a history entry';end if;
+ insert into wa_messages(conversation_id,application_id,direction,author,author_id,kind,body,status) values
+  (c,aid,'out','human','00000000-0000-4000-8000-0000000000a1','text','Primera respuesta','sent'),
+  (c,aid,'out','human','00000000-0000-4000-8000-0000000000a1','text','Segunda respuesta','sent'),
+  (c,aid,'out','bot',null,'text','Respuesta del asistente','sent');
+ if (select count(*) from notes where application_id=aid and kind='comunicacion' and body like 'WhatsApp:%' and author_id='00000000-0000-4000-8000-0000000000a1')<>1 then raise exception 'Team messages must add exactly one history entry per day';end if;
+ insert into applications(full_name,phone,national_id) values('Envio Fallido','099 000 062','4567890-1') returning id into other;
+ insert into wa_messages(conversation_id,application_id,direction,author,author_id,kind,body,status) values(c,other,'out','human','00000000-0000-4000-8000-0000000000a1','text','No llegó','failed');
+ if exists(select 1 from notes where application_id=other) then raise exception 'Failed message added a history entry';end if;
+ perform set_config('test.consentcase',aid::text,true);
+end $$;
+set local request.jwt.claim.sub='00000000-0000-4000-8000-0000000000a1';
+set local role authenticated;
+do $$begin
+ if not (select wa_consent from applications where id=current_setting('test.consentcase')::uuid) then raise exception 'Admin cannot read consent';end if;
+ update applications set wa_consent=false where id=current_setting('test.consentcase')::uuid;
+end $$;
+reset role;
+do $$begin
+ if not exists(select 1 from audit_log where application_id=current_setting('test.consentcase')::uuid and changes ? 'wa_consent' and actor_name='Admin WA ficticio') then raise exception 'Consent change not audited';end if;
+end $$;
 rollback;
 \echo 'WhatsApp checks passed'

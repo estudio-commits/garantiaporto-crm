@@ -12,6 +12,76 @@ import {
 } from "lucide-react";
 import { supabase } from "@/lib/supabase";
 import { whatsappNumber } from "@/lib/phone";
+import { fillPreview, type TemplatePreview } from "@/lib/whatsapp";
+
+type TemplateResult = TemplatePreview | { error: string } | undefined;
+type Templates = {
+  configured: boolean;
+  greeting?: TemplateResult;
+  reopen?: TemplateResult;
+};
+
+const statusText: Record<string, string> = {
+  APPROVED: "Aprobada",
+  PENDING: "En revisión",
+  REJECTED: "Rechazada",
+  PAUSED: "Pausada",
+  DISABLED: "Deshabilitada",
+};
+
+/** Shows a template's approved text the way it looks on the client's phone. */
+function TemplateCard({
+  title,
+  when,
+  name,
+  result,
+  configured,
+}: {
+  title: string;
+  when: string;
+  name: string;
+  result: TemplateResult;
+  configured: boolean | null;
+}) {
+  const t = result && "body" in result ? result : null;
+  return (
+    <div className="int-template">
+      <div className="int-template-head">
+        <strong>{title}</strong>
+        <code>{name}</code>
+        {t && (
+          <span className={`int-state ${t.status === "APPROVED" ? "on" : ""}`}>
+            {statusText[t.status] ?? t.status}
+          </span>
+        )}
+      </div>
+      <p>{when}</p>
+      {t ? (
+        <div
+          className="int-template-bubble"
+          aria-label={`Texto de la plantilla ${name}`}
+        >
+          {t.header && <strong>{fillPreview(t.header)}</strong>}
+          <span>{fillPreview(t.body)}</span>
+          {t.footer && <small>{t.footer}</small>}
+          {t.buttons.map((b) => (
+            <em key={b}>{b}</em>
+          ))}
+        </div>
+      ) : (
+        <small className="muted">
+          {configured === null
+            ? "Consultando el texto en Meta…"
+            : configured === false
+              ? "Para ver el texto, cargá WHATSAPP_BUSINESS_ACCOUNT_ID en Vercel (ver docs/WHATSAPP.md)."
+              : result && "error" in result
+                ? result.error
+                : "No se pudo leer la plantilla."}
+        </small>
+      )}
+    </div>
+  );
+}
 
 type Settings = {
   auto_greeting: boolean;
@@ -161,8 +231,29 @@ export default function Integrations({ demo }: { demo: boolean }) {
       { status: string; created_at: string; error: string | null }[] | null
     >(null),
     [message, setMessage] = useState(""),
+    [templates, setTemplates] = useState<Templates | null>(null),
     [busy, setBusy] = useState(false);
 
+  const loadTemplates = useCallback(async () => {
+    if (!supabase) return;
+    const {
+      data: { session },
+    } = await supabase.auth.getSession();
+    const r = await fetch("/api/whatsapp/templates", {
+      headers: { authorization: `Bearer ${session?.access_token}` },
+    }).catch(() => null);
+    const data = r?.ok ? ((await r.json()) as Templates) : null;
+    setTemplates(
+      data ?? {
+        configured: true,
+        greeting: { error: "No se pudo consultar a Meta." },
+        reopen: { error: "No se pudo consultar a Meta." },
+      },
+    );
+  }, []);
+  useEffect(() => {
+    if (!demo) loadTemplates();
+  }, [demo, loadTemplates]);
   const load = useCallback(async () => {
     if (!supabase) return;
     const [st, at, wh, fq] = await Promise.all([
@@ -434,6 +525,20 @@ export default function Integrations({ demo }: { demo: boolean }) {
               onChange={(v) => set("auto_greeting", v)}
               on="el saludo sale solo."
               off="el saludo se envía a mano desde la ficha del cliente."
+            />
+            <TemplateCard
+              title="Saludo inicial"
+              when="Primer mensaje a quien completó el formulario web (automático si el saludo está activado, o con «Enviar saludo inicial» desde el chat)."
+              name={s.greeting_template}
+              result={templates?.greeting}
+              configured={templates ? templates.configured : null}
+            />
+            <TemplateCard
+              title="Retomar conversación"
+              when="Se envía desde el chat cuando pasaron más de 24 h desde el último mensaje del cliente: WhatsApp solo permite escribir con una plantilla aprobada."
+              name={s.reopen_template}
+              result={templates?.reopen}
+              configured={templates ? templates.configured : null}
             />
             <Option
               title="Respuesta fija cuando no responde el asistente"
