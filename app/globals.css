@@ -2932,3 +2932,8 @@ button.int-switch {
 .consent-check {
   margin-bottom: 0;
 }
+button.whatsapp-link {
+  border: 0;
+  padding: 0;
+  cursor: pointer;
+}

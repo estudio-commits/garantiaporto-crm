@@ -654,3 +654,27 @@ test("WhatsApp consent is asked once and stays on the client file", async ({
     .click();
   await expect(panel.getByRole("checkbox")).toHaveCount(0);
 });
+test("the WhatsApp icon opens the client's chat inside the CRM, never wa.me", async ({
+  page,
+}) => {
+  await page.goto("/");
+  await nav(page, "Lista de clientes").click();
+  await page.locator("tr", { hasText: "Bruno Demostración" }).first().click();
+  await page
+    .getByRole("textbox", { name: "Celular", exact: true })
+    .fill("099 123 456");
+  await page.getByRole("button", { name: "Guardar datos" }).click();
+  await page
+    .getByRole("button", { name: "Abrir chat de WhatsApp en el CRM" })
+    .click();
+  const panel = page.getByRole("region", { name: "Conversación de WhatsApp" });
+  await expect(panel).toContainText("Perfecto, quedo atento.");
+  await page.getByRole("button", { name: "Volver a solicitudes" }).click();
+  await nav(page, "Lista de clientes").click();
+  await page
+    .locator("tr", { hasText: "Bruno Demostración" })
+    .getByRole("button", { name: "Abrir chat de WhatsApp en el CRM" })
+    .click();
+  await expect(panel).toBeVisible();
+  await expect(page.locator('a[href*="wa.me"]')).toHaveCount(0);
+});
