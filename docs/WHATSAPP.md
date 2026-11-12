@@ -176,7 +176,9 @@ El conocimiento del asistente está en **`docs/WHATSAPP-FAQ.md`** (aprobado el 1
   - **Botones del sitio:** reconoce el texto exacto de cada botón y carga el tipo de garantía en la ficha.
   - **Rural:** envía el mensaje aprobado y deriva directo a Lucía.
   - **Listas de documentos:** por forma de cobro (empleado, profesional o unipersonal, microempresa, empresa, jubilado, rentista) y la de estudiantes para universitaria.
-  - **Cuentas:** costo aproximado (70% del alquiler, tradicional y universitaria), referencia del 30% de ingresos en tradicional y topes de universitaria ($ 15.000 por estudiante, hasta 3).
+  - **Cuentas:** ingresos mínimos en tradicional (alquiler ÷ 0,30, sumando hasta 5 personas más), topes de universitaria ($ 15.000 por estudiante, hasta 3) y costo aproximado (70% del alquiler), este último solo si el cliente lo pregunta.
+  - **Orden:** la lista de documentos sale recién cuando el CRM confirmó que los ingresos alcanzan (o que el alquiler entra en el tope universitario). Si no alcanzan, el asistente ofrece sumar ingresos o que Lucía analice el caso.
+  - **Estilo:** mensajes de 20 a 30 palabras, solo sobre lo que el cliente preguntó.
   - **Marca:** el primer mensaje de cada conversación termina con "(Mensaje automático 🤖)".
 - **Datos que carga en la ficha:** nombre (consultas directas), alquiler, tipo de garantía e ingresos líquidos del titular. Solo completa datos vacíos.
 - **Cédula:** si el cliente la escribe, la registra el servidor. El modelo nunca la ve, ni siquiera en la confirmación del formulario: le llega como "[cédula]".

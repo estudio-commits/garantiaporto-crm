@@ -11,7 +11,8 @@ import {
   documentListMessage,
   handoffMessage,
   isGreetingButton,
-  references,
+  costMessage,
+  evaluateRent,
   ruralMessage,
   siteButton,
   systemPrompt,
@@ -191,9 +192,9 @@ export const BOT_TOOLS: Anthropic.Beta.BetaTool[] = [
     },
   },
   {
-    name: "calcular_referencias",
+    name: "evaluar_alquiler",
     description:
-      "Hace las cuentas aprobadas: costo aproximado (70% del alquiler), referencia del 30% de ingresos en tradicional y topes de universitaria. Guarda el alquiler en el CRM. Usala siempre que tengas que dar un número.",
+      "Dice si la operación aplica: en tradicional, si los ingresos líquidos alcanzan para el alquiler; en universitaria, si el alquiler entra en el tope por estudiante. Devuelve los datos para el cliente y qué hacer. Guarda el alquiler en el CRM.",
     strict: true,
     input_schema: {
       type: "object",
@@ -225,6 +226,25 @@ export const BOT_TOOLS: Anthropic.Beta.BetaTool[] = [
           description:
             "Universitaria: cantidad de estudiantes. Null si no se sabe.",
         },
+      },
+    },
+  },
+  {
+    name: "estimar_costo",
+    description:
+      "Costo aproximado de la garantía (70% del alquiler mensual). Usala solo si el cliente pregunta cuánto sale.",
+    strict: true,
+    input_schema: {
+      type: "object",
+      additionalProperties: false,
+      required: ["modalidad", "monto_alquiler", "moneda"],
+      properties: {
+        modalidad: {
+          type: "string",
+          enum: ["tradicional", "universitaria", "rural"],
+        },
+        monto_alquiler: { type: "number" },
+        moneda: { type: "string", enum: ["UYU", "USD"] },
       },
     },
   },
@@ -299,6 +319,7 @@ export function caseContext(
           `- Llegó por el botón de WhatsApp del sitio: ${st.site_button === "general" ? "botón general (sin tipo de garantía)" : `garantía ${st.site_button}`}.`,
         ]
       : []),
+    `- ¿Ya se confirmó con evaluar_alquiler que aplica?: ${(st as { fit?: string | null }).fit ? "sí" : "no"}.`,
     `- Lista de documentos ya enviada: ${st.documents_sent_for ?? "no"}.`,
     `- ¿Ya respondiste antes en esta conversación?: ${introduced ? "sí" : "no (es tu primer mensaje: empezá con el saludo de la base de conocimiento)"}.`,
     `- Ahora estamos ${inHours ? "dentro" : "fuera"} del horario de atención humana.`,
@@ -585,14 +606,21 @@ export async function runBotTurn(
             const p = String(input.situacion_ingresos) as DocProfile;
             if (!(p in DOC_PROFILES))
               throw Error("Situación de ingresos desconocida");
+            // Documents only after evaluar_alquiler confirmed the operation applies.
+            const needs = p === "estudiante" ? "universitaria" : "tradicional";
+            if (state.fit !== needs)
+              throw Error(
+                "Todavía no está confirmado que aplica. Usá evaluar_alquiler con el alquiler y los ingresos (o los estudiantes); si no alcanza, no envíes documentos y ofrecé alternativas.",
+              );
             await enqueue(documentListMessage(p));
             state = { ...state, income_profile: p, documents_sent_for: p };
             result = "Lista enviada al cliente. No la repitas.";
-          } else if (use.name === "calcular_referencias") {
+          } else if (use.name === "evaluar_alquiler") {
             const rent = Number(input.monto_alquiler);
             const currency = input.moneda === "USD" ? "USD" : "UYU";
-            result = references({
-              modalidad: String(input.modalidad) as GuaranteeType,
+            const modalidad = String(input.modalidad) as GuaranteeType;
+            const fit = evaluateRent({
+              modalidad,
               monto_alquiler: rent,
               moneda: currency,
               ingresos_liquidos_totales:
@@ -604,6 +632,16 @@ export async function runBotTurn(
                   ? null
                   : Number(input.cantidad_estudiantes),
             });
+            state = { ...state, fit: fit.ok ? modalidad : null };
+            result = `Para el cliente (en tus palabras, breve): ${fit.facts}\nQué hacer: ${fit.guidance}`;
+            await db.rpc("wa_bot_update_case", {
+              p_application: c.application_id,
+              f: { rent_amount: rent, rent_currency: currency },
+            });
+          } else if (use.name === "estimar_costo") {
+            const rent = Number(input.monto_alquiler);
+            const currency = input.moneda === "USD" ? "USD" : "UYU";
+            result = `Para el cliente: ${costMessage(String(input.modalidad) as GuaranteeType, rent, currency)}`;
             await db.rpc("wa_bot_update_case", {
               p_application: c.application_id,
               f: { rent_amount: rent, rent_currency: currency },
