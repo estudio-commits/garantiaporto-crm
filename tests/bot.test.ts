@@ -768,3 +768,25 @@ test("the assistant's knowledge is generated from docs/WHATSAPP-FAQ.md and up to
     "Corré npm run bot:knowledge después de editar docs/WHATSAPP-FAQ.md",
   );
 });
+
+test("assistant errors show the API's reason to the team", async () => {
+  const { default: Anthropic } = await import("@anthropic-ai/sdk");
+  const { botErrorReason } = await import("../lib/bot");
+  const err = Anthropic.APIError.generate(
+    400,
+    {
+      type: "error",
+      error: {
+        type: "invalid_request_error",
+        message: "tools.0: ejemplo ficticio",
+      },
+    },
+    undefined,
+    new Headers(),
+  );
+  assert.equal(
+    botErrorReason(err),
+    "Error del asistente (HTTP 400): tools.0: ejemplo ficticio.",
+  );
+  assert.equal(botErrorReason(new Error("x")), "Error del asistente: x.");
+});

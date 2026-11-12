@@ -315,6 +315,20 @@ export type BotResult = {
   reason?: string;
 };
 
+/**
+ * Readable reason for the team when the assistant fails. Includes the API's own message (it describes
+ * the request, never customer data) so a rejected request can be diagnosed from the CRM.
+ */
+export function botErrorReason(e: unknown) {
+  if (e instanceof Anthropic.APIError) {
+    const body = e.error as { error?: { message?: unknown } } | undefined;
+    const detail =
+      typeof body?.error?.message === "string" ? body.error.message : "";
+    return `Error del asistente (HTTP ${e.status})${detail ? `: ${detail.replace(/\s+/g, " ").slice(0, 300)}` : ""}.`;
+  }
+  return `Error del asistente: ${e instanceof Error ? e.message.slice(0, 200) : "desconocido"}.`;
+}
+
 /** Runs one assistant turn for a conversation if it is active and has an unanswered customer message. */
 export async function runBotTurn(
   db: SupabaseClient,
@@ -619,10 +633,8 @@ export async function runBotTurn(
     }
   } catch (e) {
     // The model or a dependency failed after retries: hand the chat to a person instead of going silent.
-    const reason =
-      e instanceof Anthropic.APIError
-        ? `Error del asistente (HTTP ${e.status}).`
-        : "Error del asistente.";
+    const reason = botErrorReason(e);
+    console.error("[whatsapp-bot]", reason);
     await db.rpc("wa_bot_handoff", {
       p_conversation: conversationId,
       p_reason: reason,
