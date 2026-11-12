@@ -1,6 +1,6 @@
 "use client";
 import { useState } from "react";
-import { whatsappUrl } from "@/lib/phone";
+import { whatsappNumber } from "@/lib/phone";
 function Icon() {
   return (
     <svg
@@ -19,27 +19,49 @@ function Icon() {
     </svg>
   );
 }
+/**
+ * WhatsApp icon next to a phone number. The business number works only through the CRM (Meta Cloud API),
+ * so the icon opens the client's chat inside the CRM; it never opens WhatsApp on this device (wa.me).
+ * Without onOpen (e.g. while creating a client) it only shows whether the number is valid.
+ */
 export function WhatsAppLink({
   phone,
   showUnavailable = false,
+  onOpen,
 }: {
   phone: string;
   showUnavailable?: boolean;
+  onOpen?: () => void;
 }) {
-  const href = whatsappUrl(phone);
-  return href ? (
-    <a
-      className="whatsapp-link"
-      href={href}
-      target="_blank"
-      rel="noopener noreferrer"
-      aria-label="Abrir chat de WhatsApp"
-      title="Abrir chat de WhatsApp"
-      onClick={(e) => e.stopPropagation()}
-    >
-      <Icon />
-    </a>
-  ) : showUnavailable ? (
+  const valid = !!whatsappNumber(phone);
+  if (valid && onOpen)
+    return (
+      <button
+        type="button"
+        className="whatsapp-link"
+        aria-label="Abrir chat de WhatsApp en el CRM"
+        title="Abrir chat de WhatsApp en el CRM"
+        onClick={(e) => {
+          e.preventDefault();
+          e.stopPropagation();
+          onOpen();
+        }}
+      >
+        <Icon />
+      </button>
+    );
+  if (valid)
+    return (
+      <span
+        className="whatsapp-link"
+        role="img"
+        aria-label="Celular válido para WhatsApp"
+        title="Celular válido para WhatsApp"
+      >
+        <Icon />
+      </span>
+    );
+  return showUnavailable ? (
     <span
       className="whatsapp-link unavailable"
       role="img"
@@ -50,7 +72,13 @@ export function WhatsAppLink({
     </span>
   ) : null;
 }
-export default function PhoneInput({ initial = "" }: { initial?: string }) {
+export default function PhoneInput({
+  initial = "",
+  onWhatsApp,
+}: {
+  initial?: string;
+  onWhatsApp?: () => void;
+}) {
   const [value, setValue] = useState(initial);
   return (
     <span className="phone-input">
@@ -65,7 +93,7 @@ export default function PhoneInput({ initial = "" }: { initial?: string }) {
         minLength={3}
         maxLength={40}
       />
-      <WhatsAppLink phone={value} showUnavailable />
+      <WhatsAppLink phone={value} showUnavailable onOpen={onWhatsApp} />
     </span>
   );
 }

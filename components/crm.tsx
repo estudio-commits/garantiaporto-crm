@@ -1136,7 +1136,13 @@ export default function CRM() {
                                     </button>
                                     <small>
                                       {formatCI(a.national_id)} · {a.phone}{" "}
-                                      <WhatsAppLink phone={a.phone} />
+                                      <WhatsAppLink
+                                        phone={a.phone}
+                                        onOpen={() => {
+                                          setCaseTab("WhatsApp");
+                                          setSelected(a.id);
+                                        }}
+                                      />
                                       <span>· {date(a.created_at)}</span>
                                       <FollowUp
                                         app={a}

@@ -234,7 +234,10 @@ export default function CaseDetail({
                 </label>
                 <label>
                   Celular
-                  <PhoneInput initial={a.phone} />
+                  <PhoneInput
+                    initial={a.phone}
+                    onWhatsApp={() => setTab("WhatsApp")}
+                  />
                 </label>
                 <label>
                   Alquiler mensual
