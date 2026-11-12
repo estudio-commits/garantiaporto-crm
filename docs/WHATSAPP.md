@@ -111,15 +111,16 @@ Meta pide que el permiso nombre a la empresa y al canal, y el CRM envía mensaje
 
 ### 0.6 Variables en Vercel (Settings → Environment Variables)
 
-| Variable                   | Valor                                                  |
-| -------------------------- | ------------------------------------------------------ |
-| `WHATSAPP_ENABLED`         | `false` hasta terminar las pruebas; después `true`     |
-| `WHATSAPP_PHONE_NUMBER_ID` | ID del número (primero el de prueba)                   |
-| `WHATSAPP_API_TOKEN`       | Token permanente del usuario del sistema               |
-| `WHATSAPP_APP_SECRET`      | App → Configuración → Básica → Clave secreta de la app |
-| `WHATSAPP_VERIFY_TOKEN`    | Un texto aleatorio de 32+ caracteres que elegís vos    |
-| `WHATSAPP_GRAPH_VERSION`   | `v23.0`, o la versión vigente que indique Meta         |
-| `CRON_SECRET`              | Texto aleatorio de 32+ caracteres                      |
+| Variable                       | Valor                                                                                                                                        |
+| ------------------------------ | -------------------------------------------------------------------------------------------------------------------------------------------- |
+| `WHATSAPP_ENABLED`             | `false` hasta terminar las pruebas; después `true`                                                                                           |
+| `WHATSAPP_PHONE_NUMBER_ID`     | ID del número real (el de prueba solo escribe a la lista de destinatarios de Meta)                                                           |
+| `WHATSAPP_BUSINESS_ACCOUNT_ID` | Opcional. Identificador de la cuenta de WhatsApp Business (Configuración de la API). Permite ver el texto de las plantillas en Integraciones |
+| `WHATSAPP_API_TOKEN`           | Token permanente del usuario del sistema                                                                                                     |
+| `WHATSAPP_APP_SECRET`          | App → Configuración → Básica → Clave secreta de la app                                                                                       |
+| `WHATSAPP_VERIFY_TOKEN`        | Un texto aleatorio de 32+ caracteres que elegís vos                                                                                          |
+| `WHATSAPP_GRAPH_VERSION`       | `v23.0`, o la versión vigente que indique Meta                                                                                               |
+| `CRON_SECRET`                  | Texto aleatorio de 32+ caracteres                                                                                                            |
 
 Ya existen, y también son necesarias: `NEXT_PUBLIC_SUPABASE_URL`, `NEXT_PUBLIC_SUPABASE_ANON_KEY` y `SUPABASE_SERVICE_ROLE_KEY`.
 
@@ -225,14 +226,15 @@ Conviene probar en modo prueba antes de cambiar de modelo.
 
 ## Configuración en el CRM
 
-La tabla `wa_settings` (editable por administración) define:
+En **Integraciones** (solo administración) se activan el saludo automático, la respuesta fija y el asistente. Ahí también se ve el texto aprobado de las plantillas «saludo inicial» y «retomar conversación», leído de Meta (requiere `WHATSAPP_BUSINESS_ACCOUNT_ID`). Los nombres y el idioma de las plantillas se guardan en `wa_settings` y se cambian desde Supabase.
 
-- si se envía el saludo automático;
-- los nombres de las plantillas;
-- el idioma;
-- el texto de la respuesta automática.
+### Consentimiento
 
-Por ahora se edita desde Supabase. Una pantalla de configuración en "Integraciones" llega con la etapa 3.
+Cada caso guarda si el cliente aceptó que lo contacten por WhatsApp (`wa_consent`, migración 016). Se marca solo cuando el formulario web trae el consentimiento o cuando el cliente escribe al número. Si lo aceptó por otro medio, se tilda una vez en la ficha o en el chat, al enviar la primera plantilla. El cambio queda en el historial de auditoría.
+
+### Historial y seguimiento
+
+Cuando alguien del equipo envía un mensaje de WhatsApp desde el CRM, el historial del caso suma una comunicación «WhatsApp: conversación con el cliente…», una por día. Así la alerta de seguimiento cuenta esa conversación como contacto. Los mensajes del cliente, del asistente y el saludo automático no suman al historial: un cliente que escribió y no recibió respuesta del equipo sigue generando alerta. En la demo, los mensajes no se suman al historial.
 
 ## Etapas de desarrollo
 

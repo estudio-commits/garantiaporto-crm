@@ -228,6 +228,7 @@ export function WhatsAppPanel({
   demo,
   embedded = false,
   onChange,
+  onConsent,
 }: {
   app: Application;
   profile: Profile;
@@ -236,11 +237,15 @@ export function WhatsAppPanel({
   embedded?: boolean;
   /** Called after messages are read or sent, so the inbox list can refresh. */
   onChange?: () => void;
+  /** Stores the consent ticked here on the case, so the client file reflects it. */
+  onConsent?: () => void;
 }) {
   const [messages, setMessages] = useState<WaMessage[]>([]),
     [conversation, setConversation] = useState<WaConversation | null>(null),
     [text, setText] = useState(""),
     [consent, setConsent] = useState(false),
+    // Consent ticked here is stored on the case by the server, so it is asked only once.
+    [savedConsent, setSavedConsent] = useState(false),
     [busy, setBusy] = useState(false),
     [error, setError] = useState(""),
     [now, setNow] = useState(Date.now());
@@ -280,8 +285,10 @@ export function WhatsAppPanel({
     (m) => m.direction === "out" && m.kind === "template",
   );
   const hasConsent =
+    !!app.wa_consent ||
     !!String(app.attribution?.consent_evidence ?? "").trim() ||
-    !!conversation?.last_inbound_at;
+    !!conversation?.last_inbound_at ||
+    savedConsent;
 
   async function send(action: SendAction) {
     setBusy(true);
@@ -289,6 +296,10 @@ export function WhatsAppPanel({
     try {
       await sendMessage(demo, app, profile, action, text.trim(), consent);
       if (action === "text") setText("");
+      if (consent) {
+        setSavedConsent(true);
+        onConsent?.();
+      }
       setConsent(false);
       await load();
       onChange?.();
@@ -426,7 +437,8 @@ export function WhatsAppPanel({
                 checked={consent}
                 onChange={(e) => setConsent(e.target.checked)}
               />
-              El cliente aceptó que lo contactemos por WhatsApp.
+              El cliente aceptó que lo contactemos por WhatsApp. Queda guardado
+              en la ficha y no se vuelve a pedir.
             </label>
           )}
           <button
@@ -494,12 +506,14 @@ export function WhatsAppInbox({
   profile,
   demo,
   open,
+  onConsent,
 }: {
   applications: Application[];
   profile: Profile;
   demo: boolean;
   /** Opens the client's full case file. */
   open: (applicationId: string) => void;
+  onConsent?: (applicationId: string) => void;
 }) {
   const [convs, setConvs] = useState<WaConversation[]>([]),
     [last, setLast] = useState<Map<string, WaMessage>>(new Map()),
@@ -726,6 +740,7 @@ export function WhatsAppInbox({
               demo={demo}
               embedded
               onChange={load}
+              onConsent={() => onConsent?.(app.id)}
             />
           </>
         ) : (

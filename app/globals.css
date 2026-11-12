@@ -2882,3 +2882,53 @@ button.int-switch {
     flex: 1;
   }
 }
+
+.int-template {
+  padding: 12px 0;
+  border-top: 1px solid var(--line);
+  display: grid;
+  gap: 6px;
+}
+.int-template-head {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+}
+.int-template-head code {
+  font-size: 12px;
+  background: #f1f3f6;
+  padding: 1px 6px;
+  border-radius: 6px;
+}
+.int-template > p {
+  margin: 0;
+  font-size: 13px;
+  color: var(--muted);
+  max-width: 640px;
+}
+.int-template-bubble {
+  max-width: 460px;
+  background: #d9fdd3;
+  border-radius: 8px;
+  padding: 8px 10px;
+  box-shadow: 0 1px 1px #0b141a1f;
+  display: grid;
+  gap: 4px;
+  font-size: 14px;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+.int-template-bubble small {
+  color: #667781;
+}
+.int-template-bubble em {
+  font-style: normal;
+  text-align: center;
+  color: #027eb5;
+  border-top: 1px solid #0b141a14;
+  padding-top: 6px;
+}
+.consent-check {
+  margin-bottom: 0;
+}

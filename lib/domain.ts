@@ -79,6 +79,8 @@ export type Application = {
   guarantee_stage?: string;
   requested_date?: string | null;
   follow_up_date?: string | null;
+  /** The client agreed to be contacted by WhatsApp (web form, wrote to the number, or ticked by the team). */
+  wa_consent?: boolean;
   drive_folder_url?: string | null;
   preapproval: string;
   documentation: string;

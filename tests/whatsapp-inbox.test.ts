@@ -46,3 +46,56 @@ test("day separators and initials", () => {
   assert.equal(initials("Bruno  Demostración Pérez"), "BD");
   assert.equal(initials(""), "?");
 });
+
+import { fillPreview, templatePreview } from "../lib/whatsapp";
+
+test("template preview picks the configured language and flattens the text", () => {
+  const list = [
+    {
+      name: "saludo_solicitud",
+      language: "en_US",
+      status: "APPROVED",
+      components: [{ type: "BODY", text: "Hi {{1}}" }],
+    },
+    {
+      name: "saludo_solicitud",
+      language: "es_UY",
+      status: "APPROVED",
+      components: [
+        { type: "HEADER", format: "TEXT", text: "Garantía Porto" },
+        { type: "BODY", text: "Hola {{1}}, recibimos tu solicitud." },
+        { type: "FOOTER", text: "Mensaje ficticio" },
+        { type: "BUTTONS", buttons: [{ text: "Quiero avanzar" }] },
+      ],
+    },
+  ];
+  const t = templatePreview(list, "saludo_solicitud", "es_UY")!;
+  assert.equal(t.header, "Garantía Porto");
+  assert.equal(
+    fillPreview(t.body),
+    "Hola [nombre del cliente], recibimos tu solicitud.",
+  );
+  assert.equal(t.footer, "Mensaje ficticio");
+  assert.deepEqual(t.buttons, ["Quiero avanzar"]);
+  assert.equal(
+    templatePreview(list, "saludo_solicitud", "pt_BR")!.language,
+    "en_US",
+  );
+  assert.equal(templatePreview(list, "otra", "es_UY"), null);
+  assert.equal(
+    templatePreview(
+      [
+        {
+          name: "x",
+          components: [
+            { type: "HEADER", format: "IMAGE" },
+            { type: "BODY", text: "b" },
+          ],
+        },
+      ],
+      "x",
+      "es_UY",
+    )!.header,
+    "[image]",
+  );
+});

@@ -618,3 +618,39 @@ test("WhatsApp inbox opens the case conversation, sends inside the window and of
   ).toBeVisible();
   await expect(panel).toContainText("Plantilla: retomar_conversacion");
 });
+test("WhatsApp consent is asked once and stays on the client file", async ({
+  page,
+}) => {
+  await page.goto("/");
+  const open = async () => {
+    await nav(page, "Lista de clientes").click();
+    await page.locator("tr", { hasText: "Mateo Prueba" }).first().click();
+  };
+  await open();
+  await page
+    .getByRole("button", { name: "WhatsApp", exact: true })
+    .last()
+    .click();
+  const panel = page.getByRole("region", { name: "Conversación de WhatsApp" });
+  const consent = panel.getByRole("checkbox");
+  await expect(consent).toBeVisible();
+  await expect(
+    panel.getByRole("button", { name: "Enviar saludo inicial" }),
+  ).toBeDisabled();
+  await consent.check();
+  await panel.getByRole("button", { name: "Enviar saludo inicial" }).click();
+  await expect(panel).toContainText("Plantilla: saludo_solicitud");
+  await expect(panel.getByRole("checkbox")).toHaveCount(0);
+  await page.reload();
+  await open();
+  await expect(
+    page.getByRole("checkbox", {
+      name: "El cliente aceptó que lo contactemos por WhatsApp",
+    }),
+  ).toBeChecked();
+  await page
+    .getByRole("button", { name: "WhatsApp", exact: true })
+    .last()
+    .click();
+  await expect(panel.getByRole("checkbox")).toHaveCount(0);
+});
