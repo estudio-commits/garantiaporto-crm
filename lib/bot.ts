@@ -1,16 +1,23 @@
 // Asistente automático de WhatsApp (etapa 3). Server-only.
 // Reads the conversation, asks Claude for the next reply with three narrow tools, and queues the
 // replies in wa_outbox. Every case change goes through wa_bot_update_case, which only fills
-// allowed fields; formal decisions, income and Clearing are never exposed to or set by the model.
+// allowed fields; formal decisions and Clearing are never exposed to or set by the model.
+// Fixed steps (site buttons, web-form confirmation, rural) and every calculation run in code.
 import Anthropic from "@anthropic-ai/sdk";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import {
+  AUTO_TAG,
+  DOC_PROFILES,
   documentListMessage,
-  estimateCost,
   handoffMessage,
-  INCOME_PROFILES,
+  isGreetingButton,
+  references,
+  ruralMessage,
+  siteButton,
   systemPrompt,
-  type IncomeProfile,
+  webConfirmation,
+  type DocProfile,
+  type GuaranteeType,
 } from "./bot-knowledge";
 import { processOutbox, type WaConfig } from "./whatsapp-server";
 
@@ -61,6 +68,7 @@ type CaseRow = {
   rent_currency: string | null;
   guarantee_type: string;
   source: string;
+  monthly_income?: number | null;
 };
 
 export type BotClient = Pick<Anthropic, "beta">;
@@ -113,7 +121,7 @@ export function daysLabel(days: number[]) {
   return sorted.map(name).join(", ");
 }
 
-const PROFILE_KEYS = Object.keys(INCOME_PROFILES) as IncomeProfile[];
+const PROFILE_KEYS = Object.keys(DOC_PROFILES) as DocProfile[];
 
 export const BOT_TOOLS: Anthropic.Beta.BetaTool[] = [
   {
@@ -130,6 +138,8 @@ export const BOT_TOOLS: Anthropic.Beta.BetaTool[] = [
         "moneda",
         "tipo_garantia",
         "situacion_ingresos",
+        "ingresos_liquidos_titular",
+        "cantidad_estudiantes",
       ],
       properties: {
         nombre_completo: {
@@ -153,13 +163,23 @@ export const BOT_TOOLS: Anthropic.Beta.BetaTool[] = [
           type: ["string", "null"],
           enum: [...PROFILE_KEYS, null],
         },
+        ingresos_liquidos_titular: {
+          type: ["number", "null"],
+          description:
+            "Ingresos líquidos mensuales del titular, en pesos. No la suma con cogarantes.",
+        },
+        cantidad_estudiantes: {
+          type: ["integer", "null"],
+          description:
+            "Garantía universitaria: cuántos estudiantes se presentan.",
+        },
       },
     },
   },
   {
     name: "enviar_lista_de_documentos",
     description:
-      "Envía al cliente la lista oficial de documentos para su situación de ingresos. Usala en lugar de escribir la lista.",
+      "Envía al cliente la lista oficial de documentos para una forma de cobro (o la de estudiantes para la universitaria). Usala en lugar de escribir la lista.",
     strict: true,
     input_schema: {
       type: "object",
@@ -171,20 +191,40 @@ export const BOT_TOOLS: Anthropic.Beta.BetaTool[] = [
     },
   },
   {
-    name: "estimar_costo",
+    name: "calcular_referencias",
     description:
-      "Calcula el costo aproximado de la garantía (70% del importe del alquiler) y guarda el monto en el CRM. Devuelve el importe ya formateado para informarlo como aproximado.",
+      "Hace las cuentas aprobadas: costo aproximado (70% del alquiler), referencia del 30% de ingresos en tradicional y topes de universitaria. Guarda el alquiler en el CRM. Usala siempre que tengas que dar un número.",
     strict: true,
     input_schema: {
       type: "object",
       additionalProperties: false,
-      required: ["monto_alquiler", "moneda"],
+      required: [
+        "modalidad",
+        "monto_alquiler",
+        "moneda",
+        "ingresos_liquidos_totales",
+        "cantidad_estudiantes",
+      ],
       properties: {
+        modalidad: {
+          type: "string",
+          enum: ["tradicional", "universitaria", "rural"],
+        },
         monto_alquiler: {
           type: "number",
-          description: "Monto mensual del alquiler que dio el cliente.",
+          description: "Alquiler mensual que dio el cliente.",
         },
         moneda: { type: "string", enum: ["UYU", "USD"] },
+        ingresos_liquidos_totales: {
+          type: ["number", "null"],
+          description:
+            "Tradicional: ingresos líquidos mensuales sumados de quienes presentan ingresos, en la misma moneda que el alquiler. Null si no se saben.",
+        },
+        cantidad_estudiantes: {
+          type: ["integer", "null"],
+          description:
+            "Universitaria: cantidad de estudiantes. Null si no se sabe.",
+        },
       },
     },
   },
@@ -217,7 +257,8 @@ export function transcript(
       text = `[Se envió el mensaje automático de saludo de Garantía Porto]`;
     else if (m.media)
       text = `[El cliente envió un archivo: ${m.media.filename || text || "adjunto"}${m.media_status === "stored" ? ", guardado en su carpeta" : ""}]`;
-    else if (m.direction === "in") text = maskCI(text);
+    // The CI never reaches the model, whoever wrote it (the web-form confirmation includes it).
+    else text = maskCI(text);
     if (!text) continue;
     if (m.direction === "out" && m.author === "human")
       text = `[${handoffName} escribió]: ${text}`;
@@ -240,6 +281,8 @@ export function caseContext(
   const st = conv.bot_state as {
     income_profile?: string;
     documents_sent_for?: string;
+    students?: number;
+    site_button?: string;
   };
   return [
     "Contexto actual del caso (para vos, no lo copies textualmente):",
@@ -248,9 +291,16 @@ export function caseContext(
     `- Cédula: ${c.national_id ? "registrada" : "no registrada"}.`,
     `- Alquiler: ${c.rent_amount ? `${c.rent_amount} ${c.rent_currency ?? ""}`.trim() : "sin dato"}.`,
     `- Tipo de garantía registrado: ${c.guarantee_type}.`,
+    `- Ingresos líquidos del titular registrados: ${c.monthly_income ? `$ ${c.monthly_income}` : "sin dato"}.`,
     `- Situación de ingresos: ${st.income_profile ?? "sin dato"}.`,
+    ...(st.students ? [`- Cantidad de estudiantes: ${st.students}.`] : []),
+    ...(st.site_button
+      ? [
+          `- Llegó por el botón de WhatsApp del sitio: ${st.site_button === "general" ? "botón general (sin tipo de garantía)" : `garantía ${st.site_button}`}.`,
+        ]
+      : []),
     `- Lista de documentos ya enviada: ${st.documents_sent_for ?? "no"}.`,
-    `- ¿Ya te presentaste como asistente en esta conversación?: ${introduced ? "sí" : "no"}.`,
+    `- ¿Ya respondiste antes en esta conversación?: ${introduced ? "sí" : "no (es tu primer mensaje: empezá con el saludo de la base de conocimiento)"}.`,
     `- Ahora estamos ${inHours ? "dentro" : "fuera"} del horario de atención humana.`,
   ].join("\n");
 }
@@ -315,7 +365,14 @@ export async function runBotTurn(
     if (!history.length || history[history.length - 1].direction !== "in")
       return { ran: false, sent, handedOff, reason: "sin mensajes nuevos" };
 
-    const enqueue = async (body: string) => {
+    const lastBot = [...history]
+      .reverse()
+      .find((m) => m.direction === "out" && m.author === "bot");
+    // The first assistant message of each conversation says it is automatic.
+    let tagPending = !lastBot;
+    const enqueue = async (text: string) => {
+      const body = tagPending ? `${text}\n\n${AUTO_TAG}` : text;
+      tagPending = false;
       const r = await db.from("wa_outbox").insert({
         application_id: c.application_id,
         purpose: "bot",
@@ -341,17 +398,15 @@ export async function runBotTurn(
       handedOff = true;
     };
 
+    let skipModel = false;
     if (c.bot_turns >= MAX_BOT_TURNS) {
       await handoff(
         "La conversación superó el límite de respuestas automáticas.",
       );
-      return { ran: true, sent, handedOff };
+      skipModel = true;
     }
 
     // The CI is captured by the server from the customer's own text and never sent to the model.
-    const lastBot = [...history]
-      .reverse()
-      .find((m) => m.direction === "out" && m.author === "bot");
     for (const m of history)
       if (
         m.direction === "in" &&
@@ -365,27 +420,92 @@ export async function runBotTurn(
             f: { national_id: ci },
           });
       }
-    const { data: kase } = await db
-      .from("applications")
-      .select(
-        "id,full_name,national_id,rent_amount,rent_currency,guarantee_type,source",
-      )
-      .eq("id", c.application_id)
-      .single();
-    if (!kase)
+    const [{ data: row }, { data: sensitive }] = await Promise.all([
+      db
+        .from("applications")
+        .select(
+          "id,full_name,national_id,rent_amount,rent_currency,guarantee_type,source",
+        )
+        .eq("id", c.application_id)
+        .single(),
+      db
+        .from("application_sensitive")
+        .select("monthly_income")
+        .eq("application_id", c.application_id)
+        .maybeSingle(),
+    ]);
+    if (!row)
       return { ran: false, sent, handedOff, reason: "caso no encontrado" };
+    const kase: CaseRow = {
+      ...(row as CaseRow),
+      monthly_income:
+        sensitive?.monthly_income == null
+          ? null
+          : Number(sensitive.monthly_income),
+    };
+    state = { ...c.bot_state };
+
+    // Fixed first steps, before any model call (docs/WHATSAPP-FAQ.md, sections 2.1 and 2.2).
+    if (!lastBot && !skipModel) {
+      const inbound = history.filter((m) => m.direction === "in");
+      const last = inbound[inbound.length - 1];
+      const button = inbound
+        .map((m) => siteButton(m.body || ""))
+        .find((b) => b !== null);
+      if (button) {
+        state = { ...state, site_button: button };
+        if (button !== "general") {
+          await db.rpc("wa_bot_update_case", {
+            p_application: c.application_id,
+            f: { guarantee_type: button },
+          });
+          kase.guarantee_type =
+            kase.source === "whatsapp" ? button : kase.guarantee_type;
+        }
+        if (button === "rural") {
+          await enqueue(ruralMessage(settings.handoff_name));
+          await db.rpc("wa_bot_handoff", {
+            p_conversation: c.id,
+            p_reason: "Garantía rural: derivación directa.",
+          });
+          handedOff = true;
+          turn = true;
+          skipModel = true;
+        }
+      }
+      if (kase.source === "web" && last && isGreetingButton(last.body || "")) {
+        const text = webConfirmation({
+          ...kase,
+          monthly_income: kase.monthly_income ?? null,
+        });
+        if (text) {
+          await enqueue(text);
+          turn = true;
+          skipModel = true;
+        }
+      }
+    }
 
     const messages: Anthropic.Beta.BetaMessageParam[] = [
       ...transcript(history, settings.handoff_name),
       // Mid-conversation system message: keeps the cached system prompt and tools untouched.
       {
         role: "system",
-        content: caseContext(kase as CaseRow, c, inHours, !!lastBot),
+        content: caseContext(
+          kase,
+          { ...c, bot_state: state },
+          inHours,
+          !!lastBot,
+        ),
       },
     ];
     const system = systemPrompt(settings.handoff_name, days, from, to);
-    turn = true;
-    for (let round = 0; round < MAX_TOOL_ROUNDS && !handedOff; round++) {
+    if (!skipModel) turn = true;
+    for (
+      let round = 0;
+      round < MAX_TOOL_ROUNDS && !handedOff && !skipModel;
+      round++
+    ) {
       const response = await client.beta.messages.create({
         model: BOT_MODEL,
         max_tokens: 4000,
@@ -430,32 +550,49 @@ export async function runBotTurn(
                 rent_amount: input.monto_alquiler ?? null,
                 rent_currency: input.moneda ?? null,
                 guarantee_type: input.tipo_garantia ?? null,
+                monthly_income: input.ingresos_liquidos_titular ?? null,
               },
             });
             if (changed.error) throw Error(changed.error.message);
             if (
               typeof input.situacion_ingresos === "string" &&
-              input.situacion_ingresos in INCOME_PROFILES
+              input.situacion_ingresos in DOC_PROFILES
             )
               state = { ...state, income_profile: input.situacion_ingresos };
+            if (
+              Number.isInteger(input.cantidad_estudiantes) &&
+              Number(input.cantidad_estudiantes) > 0 &&
+              Number(input.cantidad_estudiantes) < 50
+            )
+              state = { ...state, students: input.cantidad_estudiantes };
             result = `Guardado. Campos actualizados en el CRM: ${JSON.stringify(changed.data)}.`;
           } else if (use.name === "enviar_lista_de_documentos") {
-            const p = String(input.situacion_ingresos) as IncomeProfile;
-            if (!(p in INCOME_PROFILES))
+            const p = String(input.situacion_ingresos) as DocProfile;
+            if (!(p in DOC_PROFILES))
               throw Error("Situación de ingresos desconocida");
             await enqueue(documentListMessage(p));
             state = { ...state, income_profile: p, documents_sent_for: p };
             result = "Lista enviada al cliente. No la repitas.";
-          } else if (use.name === "estimar_costo") {
+          } else if (use.name === "calcular_referencias") {
             const rent = Number(input.monto_alquiler);
             const currency = input.moneda === "USD" ? "USD" : "UYU";
-            if (!Number.isFinite(rent) || rent <= 0 || rent > 1e9)
-              throw Error("Monto de alquiler inválido");
+            result = references({
+              modalidad: String(input.modalidad) as GuaranteeType,
+              monto_alquiler: rent,
+              moneda: currency,
+              ingresos_liquidos_totales:
+                input.ingresos_liquidos_totales == null
+                  ? null
+                  : Number(input.ingresos_liquidos_totales),
+              cantidad_estudiantes:
+                input.cantidad_estudiantes == null
+                  ? null
+                  : Number(input.cantidad_estudiantes),
+            });
             await db.rpc("wa_bot_update_case", {
               p_application: c.application_id,
               f: { rent_amount: rent, rent_currency: currency },
             });
-            result = `Costo aproximado: ${estimateCost(rent, currency)} (70% del alquiler de ${currency} ${rent}). Informalo como aproximado; se puede financiar con tarjeta sin recargo.`;
           } else if (use.name === "derivar_a_persona") {
             await handoff(
               String(input.motivo || "Derivación solicitada por el asistente"),

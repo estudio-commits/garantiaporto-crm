@@ -11,7 +11,9 @@
     "test:import": "python3 tests/test_historical_import.py",
     "test:db": "bash scripts/test-db.sh",
     "test:e2e": "playwright test",
-    "simulate": "tsx scripts/send-event.ts"
+    "simulate": "tsx scripts/send-event.ts",
+    "bot:knowledge": "node scripts/bot-knowledge.mjs",
+    "bot:eval": "tsx scripts/bot-eval.ts"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^1.6.0",

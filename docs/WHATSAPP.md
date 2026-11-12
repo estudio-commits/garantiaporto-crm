@@ -166,32 +166,35 @@ Cuando el cliente manda un **PDF, una imagen o un Word** (hasta 20 MB) por Whats
 
 ### Qué hace
 
+El conocimiento del asistente está en **`docs/WHATSAPP-FAQ.md`** (aprobado el 12/11/2026). Lo que no figura ahí, no lo responde: deriva a Lucía.
+
 - **Cuándo responde:**
-  - en los **casos web**, apenas el cliente contesta el saludo o toca "Sí, enviame la lista", sin esperar a Lucía;
+  - en los **casos web**, apenas el cliente toca "Sí, envíame la lista" en el saludo;
   - en las **consultas directas** por WhatsApp, desde el primer mensaje.
-- **Qué hace en la conversación:**
-  - se presenta como asistente automático;
-  - pregunta la situación de ingresos y envía la **lista oficial de documentos**, que el CRM manda con el texto aprobado sin que el modelo lo reescriba;
-  - responde **solo** con las preguntas frecuentes aprobadas (`docs/WHATSAPP-FAQ.md` → `lib/bot-knowledge.ts`).
-- **Consultas directas:** pide nombre y apellido, monto y moneda del alquiler, tipo de garantía y situación de ingresos, y los carga en la ficha. Solo completa datos vacíos; en los casos web nunca cambia el nombre ni el tipo de garantía.
-- **Cédula:** si el cliente la escribe, la registra el servidor y **no se envía al modelo**; el modelo ve "[cédula]".
-- **Deriva a Lucía cuando corresponde:**
-  - el cliente pide una persona, reclama o pregunta por aprobación, rechazo o Clearing;
-  - consulta por **garantía rural** (se gestiona de forma personalizada);
-  - quiere la cotización exacta después de recibir el costo aproximado;
-  - no sabe la respuesta, o pasaron 40 respuestas automáticas.
-
-  Al derivar, el cliente recibe el aviso aprobado (con el horario si es fuera de hora), el chat queda marcado **"Requiere atención"** en la bandeja y el asistente se pausa.
-
+- **Pasos fijos, sin IA** (los arma el CRM con los textos aprobados):
+  - **Caso web:** confirma cédula, ingresos líquidos y alquiler que vinieron del formulario; en universitaria, pregunta cuántos estudiantes se presentan.
+  - **Botones del sitio:** reconoce el texto exacto de cada botón y carga el tipo de garantía en la ficha.
+  - **Rural:** envía el mensaje aprobado y deriva directo a Lucía.
+  - **Listas de documentos:** por forma de cobro (empleado, profesional o unipersonal, microempresa, empresa, jubilado, rentista) y la de estudiantes para universitaria.
+  - **Cuentas:** costo aproximado (70% del alquiler, tradicional y universitaria), referencia del 30% de ingresos en tradicional y topes de universitaria ($ 15.000 por estudiante, hasta 3).
+  - **Marca:** el primer mensaje de cada conversación termina con "(Mensaje automático 🤖)".
+- **Datos que carga en la ficha:** nombre (consultas directas), alquiler, tipo de garantía e ingresos líquidos del titular. Solo completa datos vacíos.
+- **Cédula:** si el cliente la escribe, la registra el servidor. El modelo nunca la ve, ni siquiera en la confirmación del formulario: le llega como "[cédula]".
+- **Deriva a Lucía** en los casos de la sección 7 del documento (persona, reclamo, rural, Clearing, documentos completos, cotización exacta, siniestros y todo lo que no esté en el documento) y después de 40 respuestas automáticas. El cliente recibe el aviso aprobado, el chat queda marcado **"Requiere atención"** y el asistente se pausa.
 - **Cuando alguien del equipo escribe** en un chat desde el CRM, el asistente se pausa en ese chat. Se reactiva con **Reactivar asistente** en la pestaña WhatsApp del caso.
-- **Costo:** con el monto del alquiler informa un **costo aproximado (70% del importe del alquiler)**, calculado por el CRM, no por la IA, y aclara que se puede financiar con tarjeta sin recargo.
-- **Garantía universitaria:** misma lista de documentos que la tradicional.
-- **Nunca** dice si una garantía está aprobada o rechazada, y no pide contraseñas ni tarjetas.
+- **Nunca** dice si una garantía está aprobada o rechazada, ni pide contraseñas, tarjetas o códigos.
+
+### Cambiar lo que sabe el asistente
+
+1. Editar `docs/WHATSAPP-FAQ.md` (secciones 1 a 10).
+2. Correr `npm run bot:knowledge`: actualiza `lib/bot-faq.ts`. Las pruebas fallan si se olvida este paso.
+3. Si cambian textos que envía el sistema (listas, derivación, rural, confirmación) o números (70%, 30%, topes), cambiarlos también en `lib/bot-knowledge.ts`.
+4. Probar con `ANTHROPIC_API_KEY=... npx tsx scripts/bot-eval.ts informe.md`: pasa las preguntas de la sección 11 por el asistente real (con datos ficticios, sin enviar WhatsApp) y deja las respuestas en el informe. Tiene un costo de API de centavos de dólar.
 
 ### Activación paso a paso
 
 1. **Clave de Anthropic.** Crear una clave en [console.anthropic.com](https://console.anthropic.com/) → API Keys, con un **límite de gasto mensual** en Billing. Cargarla en Vercel como `ANTHROPIC_API_KEY` (Sensitive) y volver a publicar.
-2. **Migración 014.** Aplicar `supabase/migrations/014_whatsapp_bot.sql`; en publicación manual, con el script `supabase-migracion-014.sql`.
+2. **Migraciones 014 y 017.** Aplicar `supabase/migrations/014_whatsapp_bot.sql` y `017_bot_income.sql` (la 017 permite guardar los ingresos que declara el cliente en el chat).
 3. **Configuración.** En el CRM → **Integraciones → WhatsApp → Asistente con IA**:
    - marcar **Asistente activado** y dejar **Modo prueba** marcado;
    - cargar tu celular y el de Lucía en **Números de prueba**;
@@ -204,7 +207,7 @@ Para apagarlo en cualquier momento: desmarcar **Asistente activado**. Vuelve la 
 ### Modelo y costo
 
 - Usa la API de Claude (Anthropic) con el modelo **Claude Opus 5.5** (`claude-opus-5-5`), en esfuerzo bajo, con caché de instrucciones y con **respaldo automático** (fallback) a otro modelo si el principal rechaza un mensaje.
-- **Costo estimado:** unos US$ 0,02–0,03 por mensaje del cliente. Con 100–200 conversaciones al mes, **~US$ 25–50/mes**.
+- **Costo estimado:** el documento de conocimiento se cachea; la primera respuesta de cada conversación cuesta unos US$ 0,10 y las siguientes, US$ 0,01–0,02. Con 100–200 conversaciones al mes, **~US$ 30–60/mes**.
 - Para bajar el costo, se puede cambiar el modelo con la variable `ANTHROPIC_MODEL` en Vercel:
 
 | Modelo                                                       | Valor de `ANTHROPIC_MODEL` | Costo estimado/mes |

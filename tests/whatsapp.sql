@@ -186,6 +186,13 @@ do $$declare r jsonb; c uuid; aid uuid; begin
  if (select rent_amount from applications where id=aid)<>25000 or (select rent_currency from applications where id=aid)<>'UYU' or (select national_id from applications where id=aid)<>'12345672' then raise exception 'Bot overwrote case data';end if;
  perform wa_bot_update_case((select id from applications where full_name='Ana Ficticia'),'{"full_name":"Otro Nombre","guarantee_type":"rural"}');
  if not exists(select 1 from applications where full_name='Ana Ficticia' and guarantee_type<>'rural') then raise exception 'Bot changed a web case';end if;
+ -- Migration 017: income declared in the chat fills an empty value only.
+ perform wa_bot_update_case(aid,'{"monthly_income":60000}');
+ if (select monthly_income from application_sensitive where application_id=aid)<>60000 then raise exception 'Bot did not store declared income';end if;
+ perform wa_bot_update_case(aid,'{"monthly_income":90000}');
+ if (select monthly_income from application_sensitive where application_id=aid)<>60000 then raise exception 'Bot overwrote income';end if;
+ perform wa_bot_update_case(aid,'{"monthly_income":"60000; drop table notes"}');
+ perform wa_bot_update_case(aid,'{"monthly_income":-5}');
  insert into wa_messages(conversation_id,application_id,direction,author,kind,body,status) values(c,aid,'out','human','text','Hola, soy Lucía','sent');
  if not (select bot_paused from wa_conversations where id=c) then raise exception 'Human takeover did not pause bot';end if;
  r=wa_record_inbound('{"wamid":"wamid.BOT3","from":"59899000020","kind":"text","body":"Gracias"}');
