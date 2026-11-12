@@ -191,7 +191,7 @@ El conocimiento del asistente está en **`docs/WHATSAPP-FAQ.md`** (aprobado el 1
 1. Editar `docs/WHATSAPP-FAQ.md` (secciones 1 a 10).
 2. Correr `npm run bot:knowledge`: actualiza `lib/bot-faq.ts`. Las pruebas fallan si se olvida este paso.
 3. Si cambian textos que envía el sistema (listas, derivación, rural, confirmación) o números (70%, 30%, topes), cambiarlos también en `lib/bot-knowledge.ts`.
-4. Probar con `ANTHROPIC_API_KEY=... npx tsx scripts/bot-eval.ts informe.md`: pasa las preguntas de la sección 11 por el asistente real (con datos ficticios, sin enviar WhatsApp) y deja las respuestas en el informe. Tiene un costo de API de centavos de dólar.
+4. Probar: en **Integraciones → Asistente con IA → Probar asistente** (solo administración). Pasa las preguntas de la sección 11 por el asistente real con un cliente ficticio, sin enviar WhatsApp ni guardar nada, y muestra cada respuesta al lado de lo esperado. Cuesta centavos de dólar. También se puede correr desde la terminal: `ANTHROPIC_API_KEY=... npm run bot:eval informe.md`.
 
 ### Activación paso a paso
 

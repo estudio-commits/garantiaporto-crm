@@ -845,6 +845,12 @@ test("the assistant's knowledge is generated from docs/WHATSAPP-FAQ.md and up to
     gen.render(gen.buildKnowledge(doc)),
     "Corré npm run bot:knowledge después de editar docs/WHATSAPP-FAQ.md",
   );
+  assert.equal(
+    readFileSync("lib/bot-tests.ts", "utf8"),
+    gen.renderCases(gen.buildCases(doc)),
+    "Corré npm run bot:knowledge después de editar docs/WHATSAPP-FAQ.md",
+  );
+  assert.ok(gen.buildCases(doc).length >= 20);
 });
 
 test("assistant errors show the API's reason to the team", async () => {
@@ -882,4 +888,24 @@ test("strict tool schemas never mix enum with a type list (the API rejects it)",
     for (const [k, v] of Object.entries(n)) walk(v, `${path}.${k}`);
   };
   for (const t of BOT_TOOLS) walk(t.input_schema, t.name);
+});
+
+test("Probar asistente: runs a question in memory and reports replies and actions", async () => {
+  const { runEvalCase } = await import("../lib/bot-eval");
+  const { client, requests } = fakeClient([
+    {
+      stop_reason: "tool_use",
+      content: [
+        text("Claro, te comunico con Lucía por este mismo canal."),
+        toolUse("derivar_a_persona", { motivo: "Pide hablar con una persona" }),
+      ],
+    },
+  ]);
+  const r = await runEvalCase(client, "Pasame el celular de Lucía");
+  assert.equal(requests.length, 1);
+  assert.match(r.replies[0], /^Claro, te comunico con Lucía/);
+  assert.match(r.replies[0], /\(Mensaje automático 🤖\)$/);
+  assert.match(r.replies[1], /^Te comunico con Lucía para que revise tu caso/);
+  assert.deepEqual(r.actions, ["Deriva a Lucía: Pide hablar con una persona"]);
+  assert.equal(r.error, undefined);
 });

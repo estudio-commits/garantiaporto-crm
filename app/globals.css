@@ -2937,3 +2937,22 @@ button.whatsapp-link {
   padding: 0;
   cursor: pointer;
 }
+
+.int-eval {
+  margin: 12px 0 0;
+  padding-left: 20px;
+  display: grid;
+  gap: 14px;
+}
+.int-eval li {
+  display: grid;
+  gap: 6px;
+}
+.int-eval-q {
+  font-weight: 600;
+}
+.int-eval .int-template-bubble {
+  background: #fff;
+  border: 1px solid var(--line);
+  box-shadow: none;
+}
