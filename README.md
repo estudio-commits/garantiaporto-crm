@@ -80,4 +80,4 @@ La pestaña **WhatsApp** de la ficha y la bandeja **WhatsApp** del menú permite
 
 Usa la API oficial de Meta (Cloud API) con un número dedicado, con `WHATSAPP_ENABLED=false` por defecto. En la demo se muestran conversaciones ficticias guardadas en `porto-demo-whatsapp-v1`.
 
-Trámites, variables y pruebas: [docs/WHATSAPP.md](docs/WHATSAPP.md). Los documentos que manda el cliente se guardan en la carpeta del caso en Google Drive. Un asistente con IA (Claude) responde preguntas frecuentes, envía la lista de documentos y deriva a una persona; se configura en Integraciones. Requiere las migraciones 011 a 016. Si la cédula llega después de creada la carpeta del caso, la carpeta se renombra sola con la CI.
+Trámites, variables y pruebas: [docs/WHATSAPP.md](docs/WHATSAPP.md). Los documentos que manda el cliente se guardan en la carpeta del caso en Google Drive. Un asistente con IA (Claude) responde preguntas frecuentes, envía la lista de documentos y deriva a una persona; se configura en Integraciones. Requiere las migraciones 011 a 017. Si la cédula llega después de creada la carpeta del caso, la carpeta se renombra sola con la CI.
