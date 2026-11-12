@@ -123,6 +123,13 @@ export function daysLabel(days: number[]) {
 
 const PROFILE_KEYS = Object.keys(DOC_PROFILES) as DocProfile[];
 
+// Strict tool schemas reject `enum` next to a type list such as ["string", "null"]: an optional
+// choice is written as anyOf(string enum, null).
+const nullableEnum = (values: readonly string[], description?: string) => ({
+  anyOf: [{ type: "string", enum: [...values] }, { type: "null" }],
+  ...(description ? { description } : {}),
+});
+
 export const BOT_TOOLS: Anthropic.Beta.BetaTool[] = [
   {
     name: "actualizar_datos_del_caso",
@@ -143,33 +150,26 @@ export const BOT_TOOLS: Anthropic.Beta.BetaTool[] = [
       ],
       properties: {
         nombre_completo: {
-          type: ["string", "null"],
+          anyOf: [{ type: "string" }, { type: "null" }],
           description: "Nombre y apellido tal como los dio el cliente.",
         },
         monto_alquiler: {
-          type: ["number", "null"],
+          anyOf: [{ type: "number" }, { type: "null" }],
           description: "Monto mensual del alquiler, solo el número.",
         },
-        moneda: {
-          type: ["string", "null"],
-          enum: ["UYU", "USD", null],
-          description: "UYU para pesos, USD para dólares.",
-        },
-        tipo_garantia: {
-          type: ["string", "null"],
-          enum: ["tradicional", "universitaria", "rural", null],
-        },
-        situacion_ingresos: {
-          type: ["string", "null"],
-          enum: [...PROFILE_KEYS, null],
-        },
+        moneda: nullableEnum(
+          ["UYU", "USD"],
+          "UYU para pesos, USD para dólares.",
+        ),
+        tipo_garantia: nullableEnum(["tradicional", "universitaria", "rural"]),
+        situacion_ingresos: nullableEnum(PROFILE_KEYS),
         ingresos_liquidos_titular: {
-          type: ["number", "null"],
+          anyOf: [{ type: "number" }, { type: "null" }],
           description:
             "Ingresos líquidos mensuales del titular, en pesos. No la suma con cogarantes.",
         },
         cantidad_estudiantes: {
-          type: ["integer", "null"],
+          anyOf: [{ type: "integer" }, { type: "null" }],
           description:
             "Garantía universitaria: cuántos estudiantes se presentan.",
         },
@@ -216,12 +216,12 @@ export const BOT_TOOLS: Anthropic.Beta.BetaTool[] = [
         },
         moneda: { type: "string", enum: ["UYU", "USD"] },
         ingresos_liquidos_totales: {
-          type: ["number", "null"],
+          anyOf: [{ type: "number" }, { type: "null" }],
           description:
             "Tradicional: ingresos líquidos mensuales sumados de quienes presentan ingresos, en la misma moneda que el alquiler. Null si no se saben.",
         },
         cantidad_estudiantes: {
-          type: ["integer", "null"],
+          anyOf: [{ type: "integer" }, { type: "null" }],
           description:
             "Universitaria: cantidad de estudiantes. Null si no se sabe.",
         },
@@ -324,7 +324,8 @@ export function botErrorReason(e: unknown) {
     const body = e.error as { error?: { message?: unknown } } | undefined;
     const detail =
       typeof body?.error?.message === "string" ? body.error.message : "";
-    return `Error del asistente (HTTP ${e.status})${detail ? `: ${detail.replace(/\s+/g, " ").slice(0, 300)}` : ""}.`;
+    const clean = detail.replace(/\s+/g, " ").replace(/\.+$/, "").slice(0, 300);
+    return `Error del asistente (HTTP ${e.status})${clean ? `: ${clean}` : ""}.`;
   }
   return `Error del asistente: ${e instanceof Error ? e.message.slice(0, 200) : "desconocido"}.`;
 }

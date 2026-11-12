@@ -790,3 +790,18 @@ test("assistant errors show the API's reason to the team", async () => {
   );
   assert.equal(botErrorReason(new Error("x")), "Error del asistente: x.");
 });
+
+test("strict tool schemas never mix enum with a type list (the API rejects it)", () => {
+  const walk = (node: unknown, path: string) => {
+    if (!node || typeof node !== "object") return;
+    const n = node as Row;
+    if (Array.isArray(n.enum)) {
+      assert.ok(!Array.isArray(n.type), `${path}: enum con lista de tipos`);
+      assert.ok(!n.enum.includes(null), `${path}: enum con null`);
+      assert.equal(n.type, "string", `${path}: enum sin type string`);
+    }
+    assert.ok(!Array.isArray(n.type), `${path}: lista de tipos; usá anyOf`);
+    for (const [k, v] of Object.entries(n)) walk(v, `${path}.${k}`);
+  };
+  for (const t of BOT_TOOLS) walk(t.input_schema, t.name);
+});
