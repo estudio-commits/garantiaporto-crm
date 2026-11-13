@@ -17,4 +17,3 @@ El asistente no lee el contenido de los archivos, así que no se puede nombrar s
 
 - **Tarea automática cada minuto:** al pasar a Vercel Pro, cambiar `vercel.json` de `17 11 * * *` (una vez por día) a `* * * * *`. Hoy los mensajes, archivos y carpetas se procesan al instante; la tarea diaria solo reintenta lo que falló.
 - **Tolerancia de ingresos del asistente:** se ofrece que Lucía analice el caso cuando los ingresos llegan al menos al 85% del mínimo (`evaluateRent` en `lib/bot-knowledge.ts`). Falta que Garantía Porto confirme ese número.
-- **Prueba automática del asistente:** correr `npm run bot:eval informe.md` con una clave de Anthropic para revisar las respuestas a la sección 11 de `docs/WHATSAPP-FAQ.md`.
