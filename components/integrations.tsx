@@ -13,6 +13,107 @@ import {
 import { supabase } from "@/lib/supabase";
 import { whatsappNumber } from "@/lib/phone";
 import { fillPreview, type TemplatePreview } from "@/lib/whatsapp";
+import { TEST_CASES } from "@/lib/bot-tests";
+
+type EvalRow = {
+  question: string;
+  expected: string;
+  replies?: string[];
+  actions?: string[];
+  error?: string;
+};
+
+/** Runs the test questions (docs/WHATSAPP-FAQ.md, section 11) through the real assistant, one per request. */
+function BotTester() {
+  const [rows, setRows] = useState<EvalRow[]>([]),
+    [running, setRunning] = useState(false),
+    [done, setDone] = useState(0);
+  async function run() {
+    if (!supabase) return;
+    setRunning(true);
+    setDone(0);
+    setRows(TEST_CASES.map((c) => ({ ...c })));
+    const {
+      data: { session },
+    } = await supabase.auth.getSession();
+    let next = 0;
+    const worker = async () => {
+      while (next < TEST_CASES.length) {
+        const index = next++;
+        let row: EvalRow;
+        try {
+          const r = await fetch("/api/whatsapp/bot-eval", {
+            method: "POST",
+            headers: {
+              "content-type": "application/json",
+              authorization: `Bearer ${session?.access_token}`,
+            },
+            body: JSON.stringify({ index }),
+          });
+          const data = await r.json().catch(() => ({}));
+          row = r.ok
+            ? (data as EvalRow)
+            : {
+                ...TEST_CASES[index],
+                error: data.error || `Error HTTP ${r.status}`,
+              };
+        } catch {
+          row = { ...TEST_CASES[index], error: "No se pudo conectar." };
+        }
+        setRows((l) => l.map((x, i) => (i === index ? row : x)));
+        setDone((d) => d + 1);
+      }
+    };
+    // Three at a time keeps it fast without hitting the API rate limit.
+    await Promise.all([worker(), worker(), worker()]);
+    setRunning(false);
+  }
+  return (
+    <div className="int-option">
+      <div className="int-option-head">
+        <div>
+          <strong>Probar el asistente</strong>
+          <p>
+            Pasa las {TEST_CASES.length} preguntas de prueba del documento de
+            conocimiento por el asistente real, con un cliente ficticio. No se
+            envía ningún WhatsApp ni se guarda nada. Cuesta centavos de dólar.
+          </p>
+        </div>
+        <button className="secondary" disabled={running} onClick={run}>
+          {running
+            ? `Probando… ${done} de ${TEST_CASES.length}`
+            : "Probar asistente"}
+        </button>
+      </div>
+      {rows.length > 0 && (
+        <ol className="int-eval" aria-label="Resultados de la prueba">
+          {rows.map((r, i) => (
+            <li key={i}>
+              <div className="int-eval-q">{r.question}</div>
+              <small>Esperado: {r.expected}</small>
+              {r.error ? (
+                <p className="alert">{r.error}</p>
+              ) : !r.replies ? (
+                <small className="muted">Esperando respuesta…</small>
+              ) : (
+                <>
+                  {r.replies.map((t, j) => (
+                    <div key={j} className="int-template-bubble">
+                      {t}
+                    </div>
+                  ))}
+                  {r.actions && r.actions.length > 0 && (
+                    <small>{r.actions.join(" · ")}</small>
+                  )}
+                </>
+              )}
+            </li>
+          ))}
+        </ol>
+      )}
+    </div>
+  );
+}
 
 type TemplateResult = TemplatePreview | { error: string } | undefined;
 type Templates = {
@@ -626,6 +727,7 @@ export default function Integrations({ demo }: { demo: boolean }) {
                 </span>
               </div>
             </div>
+            <BotTester />
           </section>
 
           {(dirty || message) && (
