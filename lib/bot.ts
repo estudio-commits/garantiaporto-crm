@@ -232,7 +232,7 @@ export const BOT_TOOLS: Anthropic.Beta.BetaTool[] = [
   {
     name: "estimar_costo",
     description:
-      "Costo aproximado de la garantía (70% del alquiler mensual). Usala solo si el cliente pregunta cuánto sale.",
+      "Costo aproximado de la garantía (72% del alquiler mensual). Usala solo si el cliente pregunta cuánto sale.",
     strict: true,
     input_schema: {
       type: "object",
