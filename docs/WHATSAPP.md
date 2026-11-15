@@ -176,7 +176,7 @@ El conocimiento del asistente está en **`docs/WHATSAPP-FAQ.md`** (aprobado el 1
   - **Botones del sitio:** reconoce el texto exacto de cada botón y carga el tipo de garantía en la ficha.
   - **Rural:** envía el mensaje aprobado y deriva directo a Lucía.
   - **Listas de documentos:** por forma de cobro (empleado, profesional o unipersonal, microempresa, empresa, jubilado, rentista) y la de estudiantes para universitaria.
-  - **Cuentas:** ingresos mínimos en tradicional (alquiler ÷ 0,30, sumando hasta 5 personas más), topes de universitaria ($ 15.000 por estudiante, hasta 3) y costo aproximado (70% del alquiler), este último solo si el cliente lo pregunta.
+  - **Cuentas:** ingresos mínimos en tradicional (alquiler ÷ 0,30, sumando hasta 5 personas más), topes de universitaria ($ 15.000 por estudiante, hasta 3) y costo aproximado (72% del alquiler), este último solo si el cliente lo pregunta.
   - **Orden:** la lista de documentos sale recién cuando el CRM confirmó que los ingresos alcanzan (o que el alquiler entra en el tope universitario). Si no alcanzan, el asistente ofrece sumar ingresos o que Lucía analice el caso.
   - **Estilo:** mensajes de 20 a 30 palabras, solo sobre lo que el cliente preguntó.
   - **Marca:** el primer mensaje de cada conversación termina con "(Mensaje automático 🤖)".
@@ -190,7 +190,7 @@ El conocimiento del asistente está en **`docs/WHATSAPP-FAQ.md`** (aprobado el 1
 
 1. Editar `docs/WHATSAPP-FAQ.md` (secciones 1 a 10).
 2. Correr `npm run bot:knowledge`: actualiza `lib/bot-faq.ts`. Las pruebas fallan si se olvida este paso.
-3. Si cambian textos que envía el sistema (listas, derivación, rural, confirmación) o números (70%, 30%, topes), cambiarlos también en `lib/bot-knowledge.ts`.
+3. Si cambian textos que envía el sistema (listas, derivación, rural, confirmación) o números (72%, 30%, topes), cambiarlos también en `lib/bot-knowledge.ts`.
 4. Probar: en **Integraciones → Asistente con IA → Probar asistente** (solo administración). Pasa las preguntas de la sección 11 por el asistente real con un cliente ficticio, sin enviar WhatsApp ni guardar nada, y muestra cada respuesta al lado de lo esperado. Cuesta centavos de dólar. También se puede correr desde la terminal: `ANTHROPIC_API_KEY=... npm run bot:eval informe.md`.
 
 ### Activación paso a paso

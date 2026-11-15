@@ -473,8 +473,8 @@ test("very long customer messages are truncated before reaching the model", () =
 
 test("cost estimate is computed by the server, not by the model", async () => {
   const { estimateCost } = await import("../lib/bot-knowledge");
-  assert.equal(estimateCost(25000, "UYU"), "$ 17.500");
-  assert.equal(estimateCost(1000, "USD"), "US$ 700");
+  assert.equal(estimateCost(25000, "UYU"), "$ 18.000");
+  assert.equal(estimateCost(1000, "USD"), "US$ 720");
   const { db, calls } = fakeDb();
   const { client, requests } = fakeClient([
     {
@@ -489,7 +489,7 @@ test("cost estimate is computed by the server, not by the model", async () => {
     },
     {
       stop_reason: "end_turn",
-      content: [text("Sería aproximadamente $ 17.500.")],
+      content: [text("Sería aproximadamente $ 18.000.")],
     },
   ]);
   await runBotTurn(db, cfg, "conv-1", client);
@@ -502,7 +502,7 @@ test("cost estimate is computed by the server, not by the model", async () => {
   const toolResult = JSON.stringify(
     (requests[1] as { messages: unknown[] }).messages.at(-1),
   );
-  assert.match(toolResult, /Sale aproximadamente \$ 17\.500/);
+  assert.match(toolResult, /Sale aproximadamente \$ 18\.000/);
 });
 
 // ---- Conocimiento del 12/11/2026: botones, formulario web, rural y cuentas ----
@@ -763,7 +763,7 @@ test("evaluateRent speaks in minimum income, offers alternatives and never menti
   );
   assert.equal(
     costMessage("tradicional", 25000, "UYU"),
-    "Sale aproximadamente $ 17.500 y se puede pagar hasta en 12 cuotas sin recargo con OCA, Visa, Master o Cabal.",
+    "Sale aproximadamente $ 18.000 y se puede pagar hasta en 12 cuotas sin recargo con OCA, Visa, Master o Cabal.",
   );
   assert.throws(() => costMessage("rural", 25000, "UYU"), /rural/);
 });
@@ -908,4 +908,16 @@ test("Probar asistente: runs a question in memory and reports replies and action
   assert.match(r.replies[1], /^Te comunico con Lucía para que revise tu caso/);
   assert.deepEqual(r.actions, ["Deriva a Lucía: Pide hablar con una persona"]);
   assert.equal(r.error, undefined);
+});
+
+test("the assistant shares the working calculator link and the 72% cost", async () => {
+  const { KNOWLEDGE } = await import("../lib/bot-faq");
+  assert.doesNotMatch(KNOWLEDGE, /garantiaporto\.com\.uy\/cotizador\b/);
+  assert.match(
+    KNOWLEDGE,
+    /https:\/\/www\.garantiaporto\.com\.uy\/cotizar-garantia-de-alquiler\//,
+  );
+  assert.doesNotMatch(KNOWLEDGE, /70%/);
+  const { estimateCost } = await import("../lib/bot-knowledge");
+  assert.equal(estimateCost(30000, "UYU"), "$ 21.600");
 });

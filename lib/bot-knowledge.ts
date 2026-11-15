@@ -195,8 +195,8 @@ export function webConfirmation(c: {
   return parts.join(" ");
 }
 
-/** Costo aproximado aprobado: 70% del alquiler mensual, para tradicional y universitaria. */
-export const COST_RATE = 0.7;
+/** Costo aproximado: 72% del alquiler mensual, igual que el cotizador del sitio (15/11/2026). Tradicional y universitaria. */
+export const COST_RATE = 0.72;
 /** Referencia de tradicional: el alquiler no debería superar el 30% de los ingresos líquidos. */
 export const INCOME_RATIO = 0.3;
 export const UNIVERSITY_PER_STUDENT = 15000;
