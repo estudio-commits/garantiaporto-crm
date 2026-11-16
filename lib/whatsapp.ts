@@ -1,5 +1,6 @@
 // WhatsApp Cloud API helpers shared by server routes, the CRM UI and tests.
 // Pure functions only: no secrets, no network, no Node-only modules.
+import { oggOpusChannels } from "./ogg-opus";
 
 export const WINDOW_MS = 24 * 60 * 60 * 1000;
 
@@ -45,6 +46,8 @@ export type WaMedia = {
   filename?: string;
   drive_file_id?: string;
   drive_url?: string;
+  /** Sent by the team as a WhatsApp voice note (Ogg/Opus). */
+  voice?: boolean;
 };
 
 /** Only Google Drive links produced by the CRM are rendered as links. */
@@ -245,12 +248,17 @@ export type OutboxRow = {
   kind: "text" | "template" | SendMediaKind;
   body: string | null;
   template: { name: string; language: string; params?: string[] } | null;
-  media?: { id: string; filename?: string; mime_type?: string } | null;
+  media?: {
+    id: string;
+    filename?: string;
+    mime_type?: string;
+    voice?: boolean;
+  } | null;
   attempts: number;
   created_at: string;
 };
 
-export type SendMediaKind = "image" | "document" | "video";
+export type SendMediaKind = "image" | "document" | "video" | "audio";
 
 /** Files the team can send from the chat. Limits: WhatsApp's own, capped by what a Vercel request can carry. */
 export const SEND_MEDIA: Record<string, { kind: SendMediaKind; ext: string }> = {
@@ -259,7 +267,25 @@ export const SEND_MEDIA: Record<string, { kind: SendMediaKind; ext: string }> = 
   "application/pdf": { kind: "document", ext: "pdf" },
   "video/mp4": { kind: "video", ext: "mp4" },
   "video/3gpp": { kind: "video", ext: "3gp" },
+  "audio/ogg": { kind: "audio", ext: "ogg" },
+  "audio/mpeg": { kind: "audio", ext: "mp3" },
+  "audio/mp4": { kind: "audio", ext: "m4a" },
+  "audio/aac": { kind: "audio", ext: "aac" },
 };
+// Names some systems give to the same audio formats.
+const MIME_ALIASES: Record<string, string> = {
+  "audio/x-m4a": "audio/mp4",
+  "audio/m4a": "audio/mp4",
+  "audio/mp3": "audio/mpeg",
+  "audio/x-aac": "audio/aac",
+  "audio/opus": "audio/ogg",
+  "image/jpg": "image/jpeg",
+};
+/** Base MIME type without parameters, with common aliases unified. */
+export function sendMime(type: string) {
+  const base = type.split(";")[0]!.trim().toLowerCase();
+  return MIME_ALIASES[base] ?? base;
+}
 export const SEND_MEDIA_ACCEPT = Object.keys(SEND_MEDIA).join(",");
 export const SEND_MEDIA_MAX_BYTES = 4 * 1024 * 1024;
 export const CAPTION_MAX = 1024;
@@ -290,13 +316,34 @@ export function fileMatchesType(bytes: Uint8Array, mime: string) {
       return at(0, [0x25, 0x50, 0x44, 0x46, 0x2d]);
     case "video/mp4":
     case "video/3gpp":
+    case "audio/mp4":
       return at(4, [0x66, 0x74, 0x79, 0x70]);
+    case "audio/ogg":
+      return oggOpusChannels(bytes) !== null;
+    case "audio/mpeg":
+      return (
+        at(0, [0x49, 0x44, 0x33]) ||
+        (bytes[0] === 0xff && ((bytes[1] ?? 0) & 0xe0) === 0xe0)
+      );
+    case "audio/aac":
+      return bytes[0] === 0xff && ((bytes[1] ?? 0) & 0xf6) === 0xf0;
     default:
       return false;
   }
 }
 
 export function messagePayload(to: string, row: OutboxRow) {
+  // Audio carries no caption; Ogg/Opus mono recordings go as voice notes.
+  if (row.kind === "audio" && row.media?.id)
+    return {
+      messaging_product: "whatsapp",
+      recipient_type: "individual",
+      to,
+      type: "audio",
+      audio: row.media.voice
+        ? { id: row.media.id, voice: true }
+        : { id: row.media.id },
+    };
   if (
     (row.kind === "image" || row.kind === "document" || row.kind === "video") &&
     row.media?.id

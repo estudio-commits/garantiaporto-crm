@@ -1,5 +1,6 @@
 import { createClient } from "@supabase/supabase-js";
 import { z } from "zod";
+import { oggOpusChannels } from "@/lib/ogg-opus";
 import { whatsappNumber } from "@/lib/phone";
 import {
   CAPTION_MAX,
@@ -7,6 +8,7 @@ import {
   SEND_MEDIA_MAX_BYTES,
   fileMatchesType,
   sendFileName,
+  sendMime,
   windowOpen,
 } from "@/lib/whatsapp";
 import {
@@ -24,7 +26,7 @@ const fail = (error: string, status: number) =>
 
 const TOO_BIG = "El archivo supera los 4 MB que se pueden enviar desde el CRM.";
 
-// Photos, PDFs and videos sent by the team from the CRM chat (multipart: application_id, file, caption).
+// Photos, PDFs, videos and audio (voice notes) sent by the team from the CRM chat (multipart: application_id, file, caption).
 // Same checks as a text message: the caller's own JWT proves case access through RLS, and the
 // client must have written in the last 24 h. The file goes to WhatsApp and is sent by media id.
 export async function POST(req: Request) {
@@ -57,18 +59,31 @@ export async function POST(req: Request) {
   if (!(file instanceof Blob) || !file.size)
     return fail("Elegí un archivo.", 422);
   if (file.size > SEND_MEDIA_MAX_BYTES) return fail(TOO_BIG, 413);
-  const mime = file.type.split(";")[0].trim().toLowerCase();
+  const mime = sendMime(file.type);
   const type = SEND_MEDIA[mime];
   if (!type)
-    return fail("Solo se pueden enviar fotos (JPG o PNG), PDF y videos MP4.", 415);
+    return fail(
+      "Solo se pueden enviar fotos (JPG o PNG), PDF, videos MP4 y audios (MP3, M4A, AAC u OGG).",
+      415,
+    );
   const bytes = new Uint8Array(await file.arrayBuffer());
   if (!fileMatchesType(bytes, mime))
-    return fail("El archivo no coincide con su tipo. Probá exportarlo de nuevo.", 415);
+    return fail(
+      "El archivo no coincide con su tipo. Probá exportarlo de nuevo.",
+      415,
+    );
   const captionRaw = form.get("caption");
-  const caption =
-    typeof captionRaw === "string" ? captionRaw.trim() : "";
+  const caption = typeof captionRaw === "string" ? captionRaw.trim() : "";
+  if (type.kind === "audio" && caption)
+    return fail(
+      "Los audios se envían sin texto. Mandá el texto como mensaje aparte.",
+      422,
+    );
   if (caption.length > CAPTION_MAX)
-    return fail(`El texto que acompaña el archivo admite hasta ${CAPTION_MAX} caracteres.`, 422);
+    return fail(
+      `El texto que acompaña el archivo admite hasta ${CAPTION_MAX} caracteres.`,
+      422,
+    );
 
   const asUser = createClient(url, anon, {
     auth: { persistSession: false, autoRefreshToken: false },
@@ -113,7 +128,15 @@ export async function POST(req: Request) {
       purpose: "manual",
       kind: type.kind,
       body: caption || null,
-      media: { id: uploaded.id, mime_type: mime, filename },
+      media: {
+        id: uploaded.id,
+        mime_type: mime,
+        filename,
+        // Ogg/Opus mono is what WhatsApp shows as a voice note (microphone, transcription).
+        ...(mime === "audio/ogg" && oggOpusChannels(bytes) === 1
+          ? { voice: true }
+          : {}),
+      },
       to_phone: `+${wa}`,
       created_by: user.id,
     })
