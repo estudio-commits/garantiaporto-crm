@@ -193,6 +193,11 @@ do $$declare r jsonb; c uuid; aid uuid; begin
  if (select monthly_income from application_sensitive where application_id=aid)<>60000 then raise exception 'Bot overwrote income';end if;
  perform wa_bot_update_case(aid,'{"monthly_income":"60000; drop table notes"}');
  perform wa_bot_update_case(aid,'{"monthly_income":-5}');
+ perform wa_bot_update_case(aid,'{"student_count":3}');
+ if (select student_count from applications where id=aid) is distinct from 3 then raise exception 'Bot did not store students';end if;
+ perform wa_bot_update_case(aid,'{"student_count":2}');
+ if (select student_count from applications where id=aid) is distinct from 3 then raise exception 'Bot overwrote students';end if;
+ begin update applications set student_count=40 where id=aid; raise exception 'Student count out of range accepted'; exception when check_violation then null; end;
  insert into wa_messages(conversation_id,application_id,direction,author,kind,body,status) values(c,aid,'out','human','text','Hola, soy Lucía','sent');
  if not (select bot_paused from wa_conversations where id=c) then raise exception 'Human takeover did not pause bot';end if;
  r=wa_record_inbound('{"wamid":"wamid.BOT3","from":"59899000020","kind":"text","body":"Gracias"}');

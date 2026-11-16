@@ -166,6 +166,7 @@ export function webConfirmation(c: {
   rent_currency: string | null;
   guarantee_type: string;
   monthly_income: number | null;
+  student_count?: number | null;
 }) {
   const first = c.full_name.trim().split(/\s+/)[0] || "";
   const university = c.guarantee_type === "universitaria";
@@ -187,7 +188,9 @@ export function webConfirmation(c: {
   const parts = [
     `Perfecto${first ? `, ${first}` : ""}! Antes de enviarte la documentación necesaria, me confirmás si están correctos estos datos? ${known.join(" ")}`,
   ];
-  if (university) parts.push("¿Cuántos estudiantes se presentarían?");
+  if (university && c.student_count)
+    parts[0] += ` Estudiantes: ${c.student_count}.`;
+  else if (university) parts.push("¿Cuántos estudiantes se presentarían?");
   if (missing.length)
     parts.push(
       `Además, me indicás ${missing.join(missing.length > 2 ? ", " : " y ").replace(/, ([^,]*)$/, " y $1")}?`,

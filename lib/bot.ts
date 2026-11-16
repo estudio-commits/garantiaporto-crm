@@ -70,6 +70,7 @@ type CaseRow = {
   guarantee_type: string;
   source: string;
   monthly_income?: number | null;
+  student_count?: number | null;
 };
 
 export type BotClient = Pick<Anthropic, "beta">;
@@ -313,7 +314,9 @@ export function caseContext(
     `- Tipo de garantía registrado: ${c.guarantee_type}.`,
     `- Ingresos líquidos del titular registrados: ${c.monthly_income ? `$ ${c.monthly_income}` : "sin dato"}.`,
     `- Situación de ingresos: ${st.income_profile ?? "sin dato"}.`,
-    ...(st.students ? [`- Cantidad de estudiantes: ${st.students}.`] : []),
+    ...(c.student_count || st.students
+      ? [`- Cantidad de estudiantes: ${c.student_count ?? st.students}.`]
+      : []),
     ...(st.site_button
       ? [
           `- Llegó por el botón de WhatsApp del sitio: ${st.site_button === "general" ? "botón general (sin tipo de garantía)" : `garantía ${st.site_button}`}.`,
@@ -460,7 +463,7 @@ export async function runBotTurn(
       db
         .from("applications")
         .select(
-          "id,full_name,national_id,rent_amount,rent_currency,guarantee_type,source",
+          "id,full_name,national_id,rent_amount,rent_currency,guarantee_type,source,student_count",
         )
         .eq("id", c.application_id)
         .single(),
@@ -587,6 +590,7 @@ export async function runBotTurn(
                 rent_currency: input.moneda ?? null,
                 guarantee_type: input.tipo_garantia ?? null,
                 monthly_income: input.ingresos_liquidos_titular ?? null,
+                student_count: input.cantidad_estudiantes ?? null,
               },
             });
             if (changed.error) throw Error(changed.error.message);

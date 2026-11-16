@@ -81,6 +81,8 @@ export type Application = {
   follow_up_date?: string | null;
   /** The client agreed to be contacted by WhatsApp (web form, wrote to the number, or ticked by the team). */
   wa_consent?: boolean;
+  /** Garantía universitaria: cuántos estudiantes se presentan (formulario web, asistente o equipo). */
+  student_count?: number | null;
   drive_folder_url?: string | null;
   preapproval: string;
   documentation: string;

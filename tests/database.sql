@@ -179,7 +179,9 @@ do $$declare r jsonb; aid uuid; begin
  aid=(r->>'application_id')::uuid;
  if (select guarantee_type from applications where id=aid)<>'universitaria' then raise exception 'Web guarantee type not stored';end if;
  perform ingest_event(jsonb_build_object('schema_version',1,'event_id','20000000-0000-4000-8000-000000000182','solicitud_id','30000000-0000-4000-8000-000000000181','step',2,'sent_at','2026-11-16T12:05:00Z',
-   'data',jsonb_build_object('full_name','Estudiante Ficticia','phone','099000181','national_id','1.234.567-2','monthly_income',null),'extra',jsonb_build_object('garantia_tipo','universitaria')));
+   'data',jsonb_build_object('full_name','Estudiante Ficticia','phone','099000181','national_id','1.234.567-2','monthly_income',null),'extra',jsonb_build_object('garantia_tipo','universitaria','elementor_estudiantes','2 estudiantes')));
+ -- Migration 019: the number of students from the form is stored on the case.
+ if (select student_count from applications where id=aid) is distinct from 2 then raise exception 'Student count not stored';end if;
  if (select guarantee_type from applications where id=aid)<>'universitaria' or (select completion from applications where id=aid)<>'completo' then raise exception 'Universitaria step 2 without income failed';end if;
  perform ingest_event(jsonb_build_object('schema_version',1,'event_id','20000000-0000-4000-8000-000000000183','solicitud_id','30000000-0000-4000-8000-000000000183','step',1,'sent_at','2026-11-16T12:00:00Z',
    'data',jsonb_build_object('full_name','Sin Tipo Ficticio','phone','099000183'),'extra',jsonb_build_object('garantia_tipo','<script>')));

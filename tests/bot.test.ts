@@ -921,3 +921,18 @@ test("the assistant shares the working calculator link and the 72% cost", async 
   const { estimateCost } = await import("../lib/bot-knowledge");
   assert.equal(estimateCost(30000, "UYU"), "$ 21.600");
 });
+
+test("universitaria web confirmation includes the students from the form instead of asking", () => {
+  assert.equal(
+    webConfirmation({
+      full_name: "Bruno Ficticio",
+      national_id: "4567890",
+      rent_amount: 30000,
+      rent_currency: "UYU",
+      guarantee_type: "universitaria",
+      monthly_income: null,
+      student_count: 2,
+    }),
+    "Perfecto, Bruno! Antes de enviarte la documentación necesaria, me confirmás si están correctos estos datos? C.I.: 456.789-0. Alquiler mensual: $ 30.000. Estudiantes: 2.",
+  );
+});
