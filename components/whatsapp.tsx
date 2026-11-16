@@ -250,6 +250,7 @@ export function WhatsAppPanel({
     [error, setError] = useState(""),
     [now, setNow] = useState(Date.now());
   const endRef = useRef<HTMLDivElement>(null);
+  const autoFiled = useRef(false);
   const load = useCallback(async () => {
     try {
       const [convs, msgs] = await Promise.all([
@@ -257,6 +258,22 @@ export function WhatsAppPanel({
         listMessages(demo, app.id),
       ]);
       const c = convs.find((x) => x.application_id === app.id) ?? null;
+      // Files still waiting for Drive are filed when someone opens the chat, once per visit.
+      if (
+        !demo &&
+        !autoFiled.current &&
+        msgs.some(
+          (m) =>
+            m.media_status === "failed" ||
+            (m.media_status === "pending" &&
+              Date.now() - Date.parse(m.created_at) > 60000) ||
+            (m.media_status === "processing" &&
+              Date.now() - Date.parse(m.created_at) > 120000),
+        )
+      ) {
+        autoFiled.current = true;
+        fileCaseMedia(app.id).then(() => load());
+      }
       setConversation(c);
       setMessages(msgs);
       setNow(Date.now());
@@ -761,6 +778,41 @@ export function WhatsAppInbox({
   );
 }
 
+async function authHeader() {
+  const {
+    data: { session },
+  } = await supabase!.auth.getSession();
+  return { authorization: `Bearer ${session?.access_token}` };
+}
+
+/** Asks the server to file this case's pending or failed WhatsApp documents in Drive now. */
+async function fileCaseMedia(applicationId: string) {
+  await fetch("/api/whatsapp/media", {
+    method: "POST",
+    headers: { "content-type": "application/json", ...(await authHeader()) },
+    body: JSON.stringify({ application_id: applicationId }),
+  }).catch(() => undefined);
+}
+
+/** Opens a file the client sent, straight from WhatsApp (works even if it is not in Drive). */
+async function openMedia(messageId: string) {
+  const tab = window.open("", "_blank");
+  const r = await fetch(
+    `/api/whatsapp/media?id=${encodeURIComponent(messageId)}`,
+    { headers: await authHeader() },
+  ).catch(() => null);
+  if (!r?.ok) {
+    tab?.close();
+    const data = await r?.json().catch(() => ({}));
+    alert(data?.error || "No se pudo abrir el archivo.");
+    return;
+  }
+  const url = URL.createObjectURL(await r.blob());
+  if (tab) tab.location.href = url;
+  else window.location.href = url;
+  setTimeout(() => URL.revokeObjectURL(url), 60000);
+}
+
 const mediaLabel: Record<string, string> = {
   pending: "Guardando en Drive…",
   processing: "Guardando en Drive…",
@@ -792,23 +844,35 @@ function MediaState({
           </a>
         </>
       )}
-      {m.media_status === "failed" && !demo && (
+      {!demo && m.direction === "in" && m.media && (
         <>
           {" · "}
-          <button
-            className="link-button"
-            disabled={busy}
-            onClick={async () => {
-              setBusy(true);
-              await supabase!.rpc("wa_retry_media", { p_message: m.id });
-              setBusy(false);
-              retried();
-            }}
-          >
-            Reintentar
+          <button className="link-button" onClick={() => openMedia(m.id)}>
+            Ver archivo
           </button>
         </>
       )}
+      {(m.media_status === "failed" ||
+        m.media_status === "pending" ||
+        m.media_status === "processing") &&
+        !demo &&
+        m.application_id && (
+          <>
+            {" · "}
+            <button
+              className="link-button"
+              disabled={busy}
+              onClick={async () => {
+                setBusy(true);
+                await fileCaseMedia(m.application_id!);
+                setBusy(false);
+                retried();
+              }}
+            >
+              {busy ? "Guardando…" : "Guardar ahora"}
+            </button>
+          </>
+        )}
     </small>
   );
 }

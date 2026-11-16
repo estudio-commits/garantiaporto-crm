@@ -4,7 +4,7 @@ import { runBotTurn } from "@/lib/bot";
 import { driveConfig } from "@/lib/drive";
 import {
   processCaseFolders,
-  processMedia,
+  drainMedia,
   processOutbox,
   readLimited,
   safeEqual,
@@ -82,7 +82,8 @@ export async function POST(req: Request) {
     after(async () => {
       await processOutbox(db, cfg, 10).catch(() => undefined);
       await processCaseFolders(db, driveConfig(), 5).catch(() => undefined);
-      await processMedia(db, cfg, driveConfig(), 5).catch(() => undefined);
+      // Every file of the batch, not only the first five (several photos often arrive together).
+      await drainMedia(db, cfg, driveConfig(), 30000).catch(() => undefined);
       // Documents are filed first so the assistant can confirm them in its reply.
       for (const id of botConversations)
         await runBotTurn(db, cfg, id).catch(() => undefined);

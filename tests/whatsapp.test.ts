@@ -676,3 +676,69 @@ test("syncCaseFolderName renames only CRM folders that still have the placeholde
     assert.equal(g.calls.filter((c) => c.init?.method === "PATCH").length, 0);
   }
 });
+
+test("drainMedia keeps filing until every file of a batch is stored", async () => {
+  const { drainMedia } = await import("../lib/whatsapp-server");
+  const pdf = Buffer.from("%PDF-1.4 documento ficticio");
+  const meta = fakeMeta(pdf, {
+    mime_type: "application/pdf",
+    file_size: pdf.length,
+  });
+  let upload = 0;
+  const google = fakeGoogle([
+    (c) =>
+      c.url.startsWith("https://www.googleapis.com/upload/")
+        ? new Response(
+            JSON.stringify({
+              id: `FILE${++upload}`,
+              webViewLink: `https://drive.google.com/file/d/FILE${upload}/view`,
+            }),
+          )
+        : undefined,
+  ]);
+  const fetcher = (async (url: string, init?: RequestInit) =>
+    String(url).includes("googleapis.com")
+      ? google.f(url, init)
+      : meta(url, init)) as typeof fetch;
+  // Twelve photos waiting: claimed five at a time.
+  let waiting = 12;
+  const stored: unknown[] = [];
+  const db = {
+    rpc: (fn: string, args: Record<string, unknown>) => {
+      if (fn === "wa_media_case")
+        return {
+          single: async () => ({
+            data: {
+              full_name: "Ana Ficticia",
+              national_id: null,
+              phone: "099000001",
+              created_at: "2026-11-07T12:00:00Z",
+              drive_folder_url:
+                "https://drive.google.com/drive/folders/CASEFOLDER123",
+            },
+            error: null,
+          }),
+        };
+      if (fn === "wa_claim_media") {
+        const n = Math.min(5, waiting);
+        waiting -= n;
+        return Promise.resolve({
+          data: Array.from({ length: n }, (_, i) => ({
+            id: `m${waiting + i}`,
+            application_id: "a1b2c3d4-0000-4000-8000-000000000001",
+            kind: "document",
+            media: { id: "MEDIA1", filename: "foto.pdf" },
+            created_at: "2026-11-07T15:30:00Z",
+          })),
+          error: null,
+        });
+      }
+      if (fn === "wa_complete_media" && args.p_status === "stored")
+        stored.push(args);
+      return Promise.resolve({ data: null, error: null });
+    },
+  };
+  const r = await drainMedia(db as never, cfg, drive, 40000, fetcher);
+  assert.equal(r.stored, 12);
+  assert.equal(stored.length, 12);
+});
