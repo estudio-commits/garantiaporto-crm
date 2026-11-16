@@ -57,6 +57,7 @@ export default function CaseDetail({
   initialTab?: string;
 }) {
   const [tab, setTab] = useState(initialTab ?? "Ficha"),
+    [gtype, setGtype] = useState(a.guarantee_type),
     [error, setError] = useState("");
   const admin = profile.role === "admin";
   const sensitive = store.sensitive.find((s) => s.application_id === a.id);
@@ -80,6 +81,7 @@ export default function CaseDetail({
         decision_date_unknown: "Fecha original de aprobación no informada",
         drive_folder_url: "Carpeta de Drive",
         wa_consent: "Acepta contacto por WhatsApp",
+        student_count: "Cantidad de estudiantes",
         summary: "Comentarios",
         national_id: "Cédula",
         monthly_income: "Ingresos",
@@ -214,6 +216,13 @@ export default function CaseDetail({
                   requested_date: f.get("requested_date") || null,
                   drive_folder_url: url || null,
                   wa_consent: f.get("wa_consent") === "on",
+                  ...(gtype === "universitaria"
+                    ? {
+                        student_count: f.get("students")
+                          ? Number(f.get("students"))
+                          : null,
+                      }
+                    : {}),
                   summary: f.get("summary"),
                 });
               }}
@@ -272,7 +281,11 @@ export default function CaseDetail({
                 </label>
                 <label>
                   Tipo de garantía
-                  <select name="type" defaultValue={a.guarantee_type}>
+                  <select
+                    name="type"
+                    defaultValue={a.guarantee_type}
+                    onChange={(e) => setGtype(e.target.value)}
+                  >
                     {["tradicional", "universitaria", "rural", "otra"].map(
                       (t) => (
                         <option key={t} value={t}>
@@ -282,6 +295,22 @@ export default function CaseDetail({
                     )}
                   </select>
                 </label>
+                {gtype === "universitaria" && (
+                  <label>
+                    Cantidad de estudiantes
+                    <select
+                      name="students"
+                      defaultValue={a.student_count ?? ""}
+                    >
+                      <option value="">Sin informar</option>
+                      {[1, 2, 3, 4, 5].map((n) => (
+                        <option key={n} value={n}>
+                          {n === 1 ? "1 estudiante" : `${n} estudiantes`}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+                )}
                 <label>
                   Fecha de solicitud
                   <input

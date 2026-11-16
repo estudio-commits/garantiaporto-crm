@@ -678,3 +678,26 @@ test("the WhatsApp icon opens the client's chat inside the CRM, never wa.me", as
   await expect(panel).toBeVisible();
   await expect(page.locator('a[href*="wa.me"]')).toHaveCount(0);
 });
+test("university clients show and keep the number of students", async ({
+  page,
+}) => {
+  await page.goto("/");
+  await nav(page, "Lista de clientes").click();
+  await page.locator("tr", { hasText: "Lucía Ejemplo" }).first().click();
+  const students = page.getByRole("combobox", {
+    name: "Cantidad de estudiantes",
+  });
+  await page
+    .getByRole("combobox", { name: "Tipo de garantía" })
+    .selectOption("universitaria");
+  await students.selectOption("2");
+  await page.getByRole("button", { name: "Guardar datos" }).click();
+  await page.reload();
+  await nav(page, "Lista de clientes").click();
+  await page.locator("tr", { hasText: "Lucía Ejemplo" }).first().click();
+  await expect(students).toHaveValue("2");
+  await page
+    .getByRole("combobox", { name: "Tipo de garantía" })
+    .selectOption("tradicional");
+  await expect(students).toHaveCount(0);
+});

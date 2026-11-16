@@ -88,7 +88,7 @@ const tables: Record<keyof Store, string> = {
 // Since migration 011 client roles can read every applications column except the
 // web continuation identifier (external_id) and contact_id, so `select *` would fail.
 const APPLICATION_COLUMNS: string =
-  "id,full_name,phone,rent_amount,rent_currency,guarantee_type,source,assigned_user_id,created_at,updated_at,completion,contact_status,first_contact_at,first_contact_by,stage,preapproval,documentation,decision,decision_date,decision_reference,summary,archived,attribution,source_id,guarantee_stage,requested_date,drive_folder_url,national_id,issued_date,issued_reference,decision_date_unknown,issued_reference_unknown,follow_up_date,wa_consent";
+  "id,full_name,phone,rent_amount,rent_currency,guarantee_type,source,assigned_user_id,created_at,updated_at,completion,contact_status,first_contact_at,first_contact_by,stage,preapproval,documentation,decision,decision_date,decision_reference,summary,archived,attribution,source_id,guarantee_stage,requested_date,drive_folder_url,national_id,issued_date,issued_reference,decision_date_unknown,issued_reference_unknown,follow_up_date,wa_consent,student_count";
 const columnsFor = (k: keyof Store) =>
   k === "applications" ? APPLICATION_COLUMNS : "*";
 const date = (s: string) =>
