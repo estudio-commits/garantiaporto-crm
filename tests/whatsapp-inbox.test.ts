@@ -99,3 +99,26 @@ test("template preview picks the configured language and flattens the text", () 
     "[image]",
   );
 });
+
+import { eventSchema } from "../lib/domain";
+
+test("the WordPress bridge's universitaria step 2 (no income) is accepted", () => {
+  const r = eventSchema.safeParse({
+    schema_version: 1,
+    event_id: "20000000-0000-4000-8000-000000000191",
+    solicitud_id: "30000000-0000-4000-8000-000000000191",
+    step: 2,
+    sent_at: "2026-11-16T12:00:00Z",
+    data: {
+      full_name: "Estudiante Ficticia",
+      phone: "59899000191",
+      rent_amount: 30000,
+      rent_currency: "UYU",
+      form_id: "Lead Garantía Universitaria - Paso 2",
+      national_id: "1.234.567-2",
+      monthly_income: null,
+    },
+    extra: { elementor_cedula: "1.234.567-2", garantia_tipo: "universitaria" },
+  });
+  assert.ok(r.success);
+});
