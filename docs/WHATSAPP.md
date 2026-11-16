@@ -139,8 +139,26 @@ Cuando el cliente manda un **PDF, una imagen o un Word** (hasta 20 MB) por Whats
 - **Cada caso nuevo tiene su carpeta desde que entra al CRM** (formulario web, WhatsApp o carga manual). Se crea en la carpeta principal (Clientes garantiaporto.com.uy → Solicitudes) con el nombre "Nombre Apellido · CI 1.234.567-8", o "Nombre Apellido · Solicitud xxxxxxxx" si todavía no hay CI. El enlace queda en la ficha. Si un documento llega antes de que exista la carpeta, se crea en ese momento.
 - En el chat aparece "Guardado en la carpeta del caso" con el enlace **Ver en Drive**.
 - Si falla, aparece el motivo y un botón **Reintentar**.
-- Los audios, videos y stickers quedan solo en el chat.
+- Las notas de voz se guardan en la subcarpeta **Notas de voz** del caso, con el día y la hora («AAAA-MM-DD HHMM Nota de voz.ogg»).
+- Los videos y stickers quedan solo en el chat (se ven con **Ver video** / **Ver archivo** mientras WhatsApp los conserve, unos 30 días).
 - **Los archivos no se guardan en la base del CRM.**
+
+### Enviar fotos, PDF y videos desde el CRM
+
+En el chat, el botón del clip (📎) permite enviarle al cliente:
+
+- **Fotos** JPG o PNG. Las fotos grandes se achican en el navegador (hasta 2048 px) antes de enviarlas.
+- **PDF**, con su nombre de archivo.
+- **Videos** MP4.
+
+Lo que se escriba en el cuadro de texto va como descripción del archivo (hasta 1024 caracteres). Reglas:
+
+- Solo dentro de las **24 h** desde el último mensaje del cliente, igual que los mensajes de texto. Fuera de ese plazo hay que enviar la plantilla.
+- Hasta **4 MB** por archivo (límite de lo que puede recibir el servidor del CRM). Para un video más pesado, recortarlo o enviarlo desde el celular de la empresa.
+- El archivo pasa por el servidor del CRM solo en tránsito y se sube a WhatsApp; el CRM guarda el identificador de WhatsApp para poder verlo después desde el chat (**Ver archivo**), mientras WhatsApp lo conserve. Lo que envía el equipo **no** se guarda en Drive.
+- Las notas de voz todavía no se pueden enviar desde el CRM (ver `docs/PENDIENTES.md`).
+
+Requiere la migración 022.
 
 ### Configuración (una sola vez, con una cuenta administradora de Workspace)
 

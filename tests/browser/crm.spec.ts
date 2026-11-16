@@ -618,6 +618,50 @@ test("WhatsApp inbox opens the case conversation, sends inside the window and of
   ).toBeVisible();
   await expect(panel).toContainText("Plantilla: retomar_conversacion");
 });
+test("the team attaches a PDF in the WhatsApp chat and sends it with a text", async ({
+  page,
+}) => {
+  await page.goto("/");
+  await nav(page, "WhatsApp").click();
+  await page
+    .getByRole("button", { name: /^Abrir conversación con Bruno Demostración/ })
+    .click();
+  const panel = page.getByRole("region", { name: "Conversación de WhatsApp" });
+  await panel.getByLabel("Archivo para enviar").setInputFiles({
+    name: "Contrato ficticio.pdf",
+    mimeType: "application/pdf",
+    buffer: Buffer.from("%PDF-1.7 ficticio"),
+  });
+  await expect(panel.locator(".wa-attachment")).toContainText(
+    "Contrato ficticio.pdf",
+  );
+  // Unsupported files are refused before sending.
+  await panel.getByLabel("Archivo para enviar").setInputFiles({
+    name: "planilla.xlsx",
+    mimeType:
+      "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+    buffer: Buffer.from("PK"),
+  });
+  await expect(panel.getByRole("alert")).toContainText(
+    "Solo se pueden enviar fotos (JPG o PNG), PDF y videos MP4.",
+  );
+  await expect(panel.locator(".wa-attachment")).toHaveCount(0);
+  await panel.getByLabel("Archivo para enviar").setInputFiles({
+    name: "Contrato ficticio.pdf",
+    mimeType: "application/pdf",
+    buffer: Buffer.from("%PDF-1.7 ficticio"),
+  });
+  await panel.getByLabel("Mensaje de WhatsApp").fill("Te mando el contrato.");
+  await panel.getByRole("button", { name: "Enviar" }).click();
+  const sent = panel.getByRole("article", {
+    name: "Equipo: Te mando el contrato.",
+  });
+  await expect(sent).toContainText("📎 Contrato ficticio.pdf · Te mando el contrato.");
+  await expect(sent).toContainText("Enviado");
+  await expect(panel.locator(".wa-attachment")).toHaveCount(0);
+  await expect(panel.getByLabel("Mensaje de WhatsApp")).toHaveValue("");
+});
+
 test("WhatsApp consent is asked once and stays on the client file", async ({
   page,
 }) => {

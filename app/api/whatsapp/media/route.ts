@@ -40,8 +40,8 @@ async function caller(req: Request) {
   return { db, asUser };
 }
 
-// GET ?id=<message id>: shows a file the client sent, straight from WhatsApp, even if it is not
-// in Drive yet. Only for users who can see that case (RLS on wa_messages).
+// GET ?id=<message id>: shows a file from the chat (sent by the client or by the team), straight
+// from WhatsApp, even if it is not in Drive. Only for users who can see that case (RLS on wa_messages).
 export async function GET(req: Request) {
   const cfg = waConfig();
   if (!cfg.enabled) return fail("WhatsApp no está activado.", 503);
@@ -51,11 +51,11 @@ export async function GET(req: Request) {
   if (!z.uuid().safeParse(id).success) return fail("Archivo inválido.", 400);
   const { data: m } = await who.asUser
     .from("wa_messages")
-    .select("id,direction,media")
+    .select("id,media")
     .eq("id", id)
     .maybeSingle();
   const media = m?.media as { id?: string; filename?: string } | null;
-  if (!m || m.direction !== "in" || !media?.id)
+  if (!m || !media?.id)
     return fail("No tenés acceso a este archivo.", 404);
   const file = await streamMedia(cfg, media.id);
   if (!file.ok) return fail(file.error, file.status);

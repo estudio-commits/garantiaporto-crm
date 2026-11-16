@@ -2102,6 +2102,24 @@ details > summary {
   margin-top: 12px;
   align-items: flex-end;
 }
+.wa-compose {
+  flex-wrap: wrap;
+}
+.wa-attachment {
+  flex-basis: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 6px 6px 6px 10px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: #f6faf7;
+  overflow-wrap: anywhere;
+}
+.wa-clip {
+  align-self: center;
+}
 .wa-compose textarea {
   flex: 1;
   border: 1px solid var(--line);
