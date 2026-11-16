@@ -2956,3 +2956,16 @@ button.whatsapp-link {
   border: 1px solid var(--line);
   box-shadow: none;
 }
+.owner-option {
+  margin-top: 20px;
+  padding-top: 16px;
+  border-top: 1px solid var(--line);
+  display: grid;
+  gap: 10px;
+  justify-items: start;
+}
+.owner-option p {
+  margin: 0;
+  font-size: 13px;
+  color: var(--muted);
+}
