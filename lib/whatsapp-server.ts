@@ -14,6 +14,7 @@ import {
 import {
   DriveError,
   ensureCaseFolder,
+  ensureVoiceNotesFolder,
   syncCaseFolderName,
   folderIdFromUrl,
   folderUrl,
@@ -200,6 +201,12 @@ const MEDIA_TYPES: Record<string, string> = {
   "application/msword": "doc",
   "application/vnd.openxmlformats-officedocument.wordprocessingml.document":
     "docx",
+  // Voice notes (filed in "Notas de voz" inside the case folder).
+  "audio/ogg": "ogg",
+  "audio/mpeg": "mp3",
+  "audio/mp4": "m4a",
+  "audio/aac": "aac",
+  "audio/amr": "amr",
 };
 export const mediaExtension = (mime: string) =>
   MEDIA_TYPES[mime.split(";")[0].trim().toLowerCase()];
@@ -207,6 +214,95 @@ export const mediaExtension = (mime: string) =>
 type MediaResult =
   | { ok: true; bytes: Buffer; mime: string }
   | { ok: false; error: string; retry: boolean; reject?: boolean };
+
+// Types the team can open from the chat but that are not filed in Drive (voice notes, videos, stickers).
+const VIEW_ONLY_TYPES = new Set([
+  "audio/ogg",
+  "audio/mpeg",
+  "audio/mp4",
+  "audio/aac",
+  "audio/amr",
+  "video/mp4",
+  "video/3gpp",
+  "image/webp",
+]);
+const baseMime = (mime: string) => mime.split(";")[0].trim().toLowerCase();
+
+type StreamResult =
+  | { ok: true; mime: string; body: ReadableStream<Uint8Array>; size?: number }
+  | { ok: false; error: string; status: number };
+
+/**
+ * Streams a file the client sent so the team can open it from the chat, whatever its type
+ * (documents, photos, voice notes, videos). Same Meta-only, no-redirect rules as downloadMedia.
+ */
+export async function streamMedia(
+  cfg: WaConfig,
+  mediaId: string,
+  fetcher: typeof fetch = fetch,
+): Promise<StreamResult> {
+  if (!/^[A-Za-z0-9_-]{1,100}$/.test(mediaId))
+    return {
+      ok: false,
+      error: "Identificador de archivo inválido.",
+      status: 400,
+    };
+  const auth = { authorization: `Bearer ${cfg.token}` };
+  try {
+    const info = await fetcher(`${cfg.apiBase}/${mediaId}`, {
+      headers: auth,
+      redirect: "error",
+      signal: AbortSignal.timeout(15000),
+    });
+    const meta = (await info.json().catch(() => ({}))) as {
+      url?: string;
+      mime_type?: string;
+      file_size?: number;
+    };
+    if (!info.ok || !meta.url)
+      return {
+        ok: false,
+        error:
+          info.status === 404
+            ? "WhatsApp ya no tiene este archivo (se guardan unos 30 días)."
+            : `WhatsApp no entregó el archivo (HTTP ${info.status}).`,
+        status: info.status === 404 ? 410 : 502,
+      };
+    const mime = baseMime(String(meta.mime_type || ""));
+    if (!mediaExtension(mime) && !VIEW_ONLY_TYPES.has(mime))
+      return {
+        ok: false,
+        error: `Tipo de archivo no admitido (${mime || "desconocido"}).`,
+        status: 415,
+      };
+    if ((meta.file_size ?? 0) > MEDIA_MAX_BYTES)
+      return { ok: false, error: "El archivo supera los 20 MB.", status: 413 };
+    const u = new URL(meta.url);
+    if (
+      u.protocol !== "https:" ||
+      !/(^|\.)(fbsbx\.com|facebook\.com|whatsapp\.net)$/.test(u.hostname)
+    )
+      return { ok: false, error: "Enlace de descarga inválido.", status: 502 };
+    const r = await fetcher(u, {
+      headers: auth,
+      redirect: "error",
+      signal: AbortSignal.timeout(25000),
+    });
+    if (!r.ok || !r.body)
+      return {
+        ok: false,
+        error: `No se pudo descargar el archivo (HTTP ${r.status}).`,
+        status: 502,
+      };
+    return { ok: true, mime, body: r.body, size: meta.file_size };
+  } catch {
+    return {
+      ok: false,
+      error: "No se pudo descargar el archivo.",
+      status: 502,
+    };
+  }
+}
 
 /** Resolves a Cloud API media id and downloads it with size, type and checksum checks. */
 export async function downloadMedia(
@@ -349,6 +445,7 @@ export function mediaFileName(
     .slice(0, 16)
     .replace(":", "");
   const ext = mediaExtension(mime) ?? "bin";
+  if (kind === "audio") return `${stamp} Nota de voz.${ext}`;
   const original = media.filename
     ? safeName(media.filename).replace(/\.[A-Za-z0-9]{1,5}$/, "")
     : kind === "image"
@@ -433,9 +530,19 @@ export async function processMedia(
           );
           newFolderUrl = folderUrl(folder);
         }
+        // Voice notes go to their own subfolder so documents stay easy to find.
+        const target =
+          row.kind === "audio"
+            ? await ensureVoiceNotesFolder(
+                drive,
+                folder,
+                row.application_id,
+                fetcher,
+              )
+            : folder;
         const up = await uploadFile(
           drive,
-          folder,
+          target,
           mediaFileName(row.kind, row.media, media.mime, row.created_at),
           media.mime,
           media.bytes,

@@ -166,6 +166,44 @@ export async function ensureCaseFolder(
   return String(created.id);
 }
 
+/** "Notas de voz" inside the case folder: found by its own tag (never crm_case), created if missing. */
+export async function ensureVoiceNotesFolder(
+  cfg: DriveConfig,
+  caseFolderId: string,
+  caseId: string,
+  fetcher: typeof fetch = fetch,
+) {
+  if (!FOLDER_ID.test(caseFolderId))
+    throw new DriveError("Identificador de carpeta inválido.", false);
+  const token = await driveToken(cfg, fetcher);
+  const id = caseId.replace(/[^0-9a-f-]/gi, "");
+  const q = `'${caseFolderId}' in parents and appProperties has { key='crm_voice_notes' and value='${id}' } and mimeType='application/vnd.google-apps.folder' and trashed=false`;
+  const found = await driveJson(
+    token,
+    `${API}?${new URLSearchParams({ q, fields: "files(id)", supportsAllDrives: "true", includeItemsFromAllDrives: "true", corpora: "allDrives", pageSize: "1" })}`,
+    { method: "GET" },
+    fetcher,
+  );
+  const existing = (found.files as { id: string }[] | undefined)?.[0]?.id;
+  if (existing) return existing;
+  const created = await driveJson(
+    token,
+    `${API}?supportsAllDrives=true&fields=id`,
+    {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        name: "Notas de voz",
+        mimeType: "application/vnd.google-apps.folder",
+        parents: [caseFolderId],
+        appProperties: { crm_voice_notes: id },
+      }),
+    },
+    fetcher,
+  );
+  return String(created.id);
+}
+
 /** A folder still named with the short case id because the CI was not known when it was created. */
 export const PLACEHOLDER_NAME = / · Solicitud [0-9a-f]{8}$/;
 

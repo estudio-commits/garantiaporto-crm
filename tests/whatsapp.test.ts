@@ -742,3 +742,125 @@ test("drainMedia keeps filing until every file of a batch is stored", async () =
   assert.equal(r.stored, 12);
   assert.equal(stored.length, 12);
 });
+
+test("streamMedia opens voice notes and videos from WhatsApp, not only documents", async () => {
+  const { streamMedia } = await import("../lib/whatsapp-server");
+  const ogg = Buffer.from("OggS nota de voz ficticia");
+  const ok = await streamMedia(
+    cfg,
+    "MEDIA1",
+    fakeMeta(ogg, {
+      mime_type: "audio/ogg; codecs=opus",
+      file_size: ogg.length,
+    }) as typeof fetch,
+  );
+  assert.ok(ok.ok);
+  if (ok.ok) {
+    assert.equal(ok.mime, "audio/ogg");
+    assert.equal(
+      Buffer.from(await new Response(ok.body).arrayBuffer()).toString(),
+      ogg.toString(),
+    );
+  }
+  const exe = await streamMedia(
+    cfg,
+    "MEDIA1",
+    fakeMeta(ogg, {
+      mime_type: "application/x-msdownload",
+      file_size: ogg.length,
+    }) as typeof fetch,
+  );
+  assert.equal(exe.ok, false);
+  const bad = await streamMedia(
+    cfg,
+    "../secret",
+    fakeMeta(ogg, {}) as typeof fetch,
+  );
+  assert.equal(bad.ok, false);
+});
+
+test("voice notes are filed in a 'Notas de voz' subfolder, named by date and time", async () => {
+  assert.equal(
+    mediaFileName(
+      "audio",
+      { id: "m" },
+      "audio/ogg; codecs=opus",
+      "2026-11-17T18:34:00Z",
+    ),
+    "2026-11-17 1534 Nota de voz.ogg",
+  );
+  const ogg = Buffer.from("OggS nota de voz ficticia");
+  const meta = fakeMeta(ogg, { mime_type: "audio/ogg", file_size: ogg.length });
+  const google = fakeGoogle([
+    (c) =>
+      c.init?.method === "GET" && c.url.includes("crm_voice_notes")
+        ? new Response(JSON.stringify({ files: [] }))
+        : undefined,
+    (c) =>
+      c.init?.method === "POST" &&
+      c.url.startsWith("https://www.googleapis.com/drive/v3/files?")
+        ? new Response(JSON.stringify({ id: "VOICEFOLDER123" }))
+        : undefined,
+    (c) =>
+      c.url.startsWith("https://www.googleapis.com/upload/")
+        ? new Response(
+            JSON.stringify({
+              id: "AUDIO1",
+              webViewLink: "https://drive.google.com/file/d/AUDIO1/view",
+            }),
+          )
+        : undefined,
+  ]);
+  const fetcher = (async (url: string, init?: RequestInit) =>
+    String(url).includes("googleapis.com")
+      ? google.f(url, init)
+      : meta(url, init)) as typeof fetch;
+  const db = {
+    rpc: (fn: string) => {
+      if (fn === "wa_media_case")
+        return {
+          single: async () => ({
+            data: {
+              full_name: "Ana Ficticia",
+              national_id: null,
+              phone: "099000001",
+              created_at: "2026-11-07T12:00:00Z",
+              drive_folder_url:
+                "https://drive.google.com/drive/folders/CASEFOLDER123",
+            },
+            error: null,
+          }),
+        };
+      if (fn === "wa_claim_media")
+        return Promise.resolve({
+          data: [
+            {
+              id: "a1",
+              application_id: "a1b2c3d4-0000-4000-8000-000000000001",
+              kind: "audio",
+              media: { id: "MEDIA1" },
+              created_at: "2026-11-17T18:34:00Z",
+            },
+          ],
+          error: null,
+        });
+      return Promise.resolve({ data: null, error: null });
+    },
+  };
+  const r = await processMedia(db as never, cfg, drive, 5, fetcher);
+  assert.equal(r.stored, 1);
+  const created = google.calls.find(
+    (c) =>
+      c.init?.method === "POST" &&
+      c.url.startsWith("https://www.googleapis.com/drive/v3/files?"),
+  )!;
+  const folder = JSON.parse(String(created.init!.body));
+  assert.equal(folder.name, "Notas de voz");
+  assert.deepEqual(folder.parents, ["CASEFOLDER123"]);
+  assert.equal(folder.appProperties.crm_case, undefined);
+  const upload = google.calls.find((c) =>
+    c.url.startsWith("https://www.googleapis.com/upload/"),
+  )!;
+  assert.match(String(upload.init!.body), /"parents":\["VOICEFOLDER123"\]/);
+  assert.match(String(upload.init!.body), /2026-11-17 1534 Nota de voz\.ogg/);
+});
