@@ -58,6 +58,7 @@ export default function CaseDetail({
 }) {
   const [tab, setTab] = useState(initialTab ?? "Ficha"),
     [gtype, setGtype] = useState(a.guarantee_type),
+    [ctype, setCtype] = useState(a.client_type ?? "inquilino"),
     [error, setError] = useState("");
   const admin = profile.role === "admin";
   const sensitive = store.sensitive.find((s) => s.application_id === a.id);
@@ -82,6 +83,7 @@ export default function CaseDetail({
         drive_folder_url: "Carpeta de Drive",
         wa_consent: "Acepta contacto por WhatsApp",
         student_count: "Cantidad de estudiantes",
+        client_type: "Tipo de cliente",
         summary: "Comentarios",
         national_id: "Cédula",
         monthly_income: "Ingresos",
@@ -209,14 +211,22 @@ export default function CaseDetail({
                   national_id: ci ? normalizeCI(ci) : null,
                   full_name: String(f.get("name")).trim(),
                   phone: String(f.get("phone")).trim(),
-                  rent_amount: f.get("rent") ? Number(f.get("rent")) : null,
-                  rent_currency: f.get("currency") || null,
+                  client_type: ctype,
+                  // An owner has no rent or guarantee: those fields are hidden and kept as they were.
+                  ...(ctype === "propietario"
+                    ? {}
+                    : {
+                        rent_amount: f.get("rent")
+                          ? Number(f.get("rent"))
+                          : null,
+                        rent_currency: f.get("currency") || null,
+                        guarantee_type: f.get("type"),
+                      }),
                   source_id: f.get("source_id") || null,
-                  guarantee_type: f.get("type"),
                   requested_date: f.get("requested_date") || null,
                   drive_folder_url: url || null,
                   wa_consent: f.get("wa_consent") === "on",
-                  ...(gtype === "universitaria"
+                  ...(gtype === "universitaria" && ctype !== "propietario"
                     ? {
                         student_count: f.get("students")
                           ? Number(f.get("students"))
@@ -249,23 +259,45 @@ export default function CaseDetail({
                   />
                 </label>
                 <label>
-                  Alquiler mensual
-                  <input
-                    name="rent"
-                    type="number"
-                    min="0"
-                    step="0.01"
-                    defaultValue={a.rent_amount ?? ""}
-                  />
-                </label>
-                <label>
-                  Moneda
-                  <select name="currency" defaultValue={a.rent_currency || ""}>
-                    <option value="">Sin informar</option>
-                    <option>UYU</option>
-                    <option>USD</option>
+                  Tipo de cliente
+                  <select
+                    name="client_type"
+                    value={ctype}
+                    onChange={(e) =>
+                      setCtype(e.target.value as "inquilino" | "propietario")
+                    }
+                  >
+                    <option value="inquilino">
+                      Inquilino (busca garantía)
+                    </option>
+                    <option value="propietario">Propietario</option>
                   </select>
                 </label>
+                {ctype !== "propietario" && (
+                  <>
+                    <label>
+                      Alquiler mensual
+                      <input
+                        name="rent"
+                        type="number"
+                        min="0"
+                        step="0.01"
+                        defaultValue={a.rent_amount ?? ""}
+                      />
+                    </label>
+                    <label>
+                      Moneda
+                      <select
+                        name="currency"
+                        defaultValue={a.rent_currency || ""}
+                      >
+                        <option value="">Sin informar</option>
+                        <option>UYU</option>
+                        <option>USD</option>
+                      </select>
+                    </label>
+                  </>
+                )}
                 <label>
                   Origen del cliente
                   <select name="source_id" defaultValue={a.source_id || ""}>
@@ -279,37 +311,41 @@ export default function CaseDetail({
                       ))}
                   </select>
                 </label>
-                <label>
-                  Tipo de garantía
-                  <select
-                    name="type"
-                    defaultValue={a.guarantee_type}
-                    onChange={(e) => setGtype(e.target.value)}
-                  >
-                    {["tradicional", "universitaria", "rural", "otra"].map(
-                      (t) => (
-                        <option key={t} value={t}>
-                          {human(t)}
-                        </option>
-                      ),
+                {ctype !== "propietario" && (
+                  <>
+                    <label>
+                      Tipo de garantía
+                      <select
+                        name="type"
+                        defaultValue={a.guarantee_type}
+                        onChange={(e) => setGtype(e.target.value)}
+                      >
+                        {["tradicional", "universitaria", "rural", "otra"].map(
+                          (t) => (
+                            <option key={t} value={t}>
+                              {human(t)}
+                            </option>
+                          ),
+                        )}
+                      </select>
+                    </label>
+                    {gtype === "universitaria" && (
+                      <label>
+                        Cantidad de estudiantes
+                        <select
+                          name="students"
+                          defaultValue={a.student_count ?? ""}
+                        >
+                          <option value="">Sin informar</option>
+                          {[1, 2, 3, 4, 5].map((n) => (
+                            <option key={n} value={n}>
+                              {n === 1 ? "1 estudiante" : `${n} estudiantes`}
+                            </option>
+                          ))}
+                        </select>
+                      </label>
                     )}
-                  </select>
-                </label>
-                {gtype === "universitaria" && (
-                  <label>
-                    Cantidad de estudiantes
-                    <select
-                      name="students"
-                      defaultValue={a.student_count ?? ""}
-                    >
-                      <option value="">Sin informar</option>
-                      {[1, 2, 3, 4, 5].map((n) => (
-                        <option key={n} value={n}>
-                          {n === 1 ? "1 estudiante" : `${n} estudiantes`}
-                        </option>
-                      ))}
-                    </select>
-                  </label>
+                  </>
                 )}
                 <label>
                   Fecha de solicitud

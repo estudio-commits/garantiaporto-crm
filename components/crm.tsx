@@ -42,6 +42,7 @@ import {
   todayUy,
   terminal,
   rejectionReasons,
+  isOwner,
 } from "@/lib/workflow";
 import Pipeline from "./pipeline";
 import SourceManager from "./source-manager";
@@ -88,7 +89,7 @@ const tables: Record<keyof Store, string> = {
 // Since migration 011 client roles can read every applications column except the
 // web continuation identifier (external_id) and contact_id, so `select *` would fail.
 const APPLICATION_COLUMNS: string =
-  "id,full_name,phone,rent_amount,rent_currency,guarantee_type,source,assigned_user_id,created_at,updated_at,completion,contact_status,first_contact_at,first_contact_by,stage,preapproval,documentation,decision,decision_date,decision_reference,summary,archived,attribution,source_id,guarantee_stage,requested_date,drive_folder_url,national_id,issued_date,issued_reference,decision_date_unknown,issued_reference_unknown,follow_up_date,wa_consent,student_count";
+  "id,full_name,phone,rent_amount,rent_currency,guarantee_type,source,assigned_user_id,created_at,updated_at,completion,contact_status,first_contact_at,first_contact_by,stage,preapproval,documentation,decision,decision_date,decision_reference,summary,archived,attribution,source_id,guarantee_stage,requested_date,drive_folder_url,national_id,issued_date,issued_reference,decision_date_unknown,issued_reference_unknown,follow_up_date,wa_consent,student_count,client_type";
 const columnsFor = (k: keyof Store) =>
   k === "applications" ? APPLICATION_COLUMNS : "*";
 const date = (s: string) =>
@@ -264,6 +265,7 @@ export default function CRM() {
       value.stage === "finalizado" &&
       application.stage !== "finalizado" &&
       !terminal(String(value.guarantee_stage ?? application.guarantee_stage)) &&
+      (value.client_type ?? application.client_type) !== "propietario" &&
       !value.follow_up_date
     ) {
       setMessage("");
@@ -415,7 +417,8 @@ export default function CRM() {
   const allowed = store.applications.filter(
     (a) => profile && visible(a, profile),
   );
-  const active = allowed.filter((a) => !a.archived);
+  // Owners are kept for the record but are not guarantee opportunities.
+  const active = allowed.filter((a) => !a.archived && !isOwner(a));
   const newRequests = active.filter(
     (a) =>
       a.stage === "nuevo" &&
@@ -424,6 +427,10 @@ export default function CRM() {
   ).length;
   const list = allowed
     .filter((a) => a.archived === (filter === "archivados"))
+    .filter(
+      (a) =>
+        filter === "archivados" || isOwner(a) === (filter === "propietarios"),
+    )
     .filter((a) =>
       `${a.full_name} ${a.phone} ${a.national_id || ""} ${formatCI(a.national_id)}`
         .toLowerCase()
@@ -433,6 +440,7 @@ export default function CRM() {
       (a) =>
         filter === "todos" ||
         filter === "archivados" ||
+        filter === "propietarios" ||
         (filter === "sin_asignar"
           ? a.assigned_user_id === null
           : a.stage === filter),
@@ -950,7 +958,7 @@ export default function CRM() {
               )}
               {page === "Estadísticas" && (
                 <Statistics
-                  applications={allowed}
+                  applications={allowed.filter((a) => !isOwner(a))}
                   store={store}
                   admin={isAdmin}
                   now={now}
@@ -963,13 +971,17 @@ export default function CRM() {
                       <h2>
                         {filter === "archivados"
                           ? "Clientes archivados"
-                          : "Todas las solicitudes"}{" "}
+                          : filter === "propietarios"
+                            ? "Propietarios"
+                            : "Todas las solicitudes"}{" "}
                         <span className="count">{list.length}</span>
                       </h2>
                       <p>
                         {filter === "archivados"
                           ? "Consultá sus fichas o restauralos para volver a gestionarlos."
-                          : "Nuevas, en proceso y finalizadas."}
+                          : filter === "propietarios"
+                            ? "Consultas de propietarios: quedan registradas, pero no son oportunidades de garantía."
+                            : "Nuevas, en proceso y finalizadas."}
                       </p>
                     </div>
                   </div>
@@ -981,6 +993,7 @@ export default function CRM() {
                         ["en_contacto", "En contacto"],
                         ["finalizado", "Finalizados"],
                         ...(isAdmin ? [["sin_asignar", "Sin asignar"]] : []),
+                        ["propietarios", "Propietarios"],
                         ["archivados", "Archivados"],
                       ].map(([v, l]) => (
                         <button
@@ -1435,6 +1448,29 @@ export default function CRM() {
               Finalizar y programar
             </button>
           </form>
+          <div className="owner-option">
+            <p>
+              <b>¿Es un propietario?</b> No es una oportunidad de garantía: se
+              finaliza sin seguimiento y pasa a la pestaña Propietarios.
+            </p>
+            <button
+              className="secondary"
+              disabled={busy}
+              onClick={async () => {
+                if (
+                  await mutate("applications", {
+                    id: followUpTarget,
+                    stage: "finalizado",
+                    client_type: "propietario",
+                    follow_up_date: null,
+                  })
+                )
+                  setFollowUpTarget(null);
+              }}
+            >
+              Es propietario
+            </button>
+          </div>
         </Dialog>
       )}
       {decisionTarget && (

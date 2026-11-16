@@ -90,11 +90,18 @@ export function compareScheduledFollowUp(
   if (left !== right) return left ? -1 : 1;
   return left && right ? a.follow_up_date!.localeCompare(b.follow_up_date!) : 0;
 }
+/** Owners write in too, but they are not guarantee opportunities. */
+export const isOwner = (a: Pick<Application, "client_type">) =>
+  a.client_type === "propietario";
 export function normalizeScheduledFollowUp(
   next: Application,
   old?: Application,
 ) {
-  if (next.stage !== "finalizado" || terminal(next.guarantee_stage)) {
+  if (
+    next.stage !== "finalizado" ||
+    terminal(next.guarantee_stage) ||
+    isOwner(next)
+  ) {
     next.follow_up_date = null;
     return;
   }
@@ -122,6 +129,7 @@ export function followUp(
   notes: Note[],
   now = Date.now(),
 ): "próximo" | "urgente" | null {
+  if (isOwner(a)) return null;
   if (scheduledFollowUpDue(a, now))
     return a.follow_up_date! < uyDay(now) ? "urgente" : "próximo";
   if (a.archived || a.stage === "finalizado" || terminal(a.guarantee_stage))
