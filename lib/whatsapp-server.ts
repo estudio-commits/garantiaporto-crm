@@ -141,6 +141,44 @@ export async function graphSend(
   };
 }
 
+/** Uploads a file the team sends from the chat; WhatsApp returns a media id to send it with. */
+export async function uploadMedia(
+  cfg: WaConfig,
+  file: Blob,
+  mime: string,
+  filename: string,
+  fetcher: typeof fetch = fetch,
+): Promise<{ ok: true; id: string } | { ok: false; error: string }> {
+  const form = new FormData();
+  form.append("messaging_product", "whatsapp");
+  form.append("type", mime);
+  form.append("file", new Blob([file], { type: mime }), filename);
+  try {
+    const r = await fetcher(`${cfg.apiBase}/${cfg.phoneNumberId}/media`, {
+      method: "POST",
+      headers: { authorization: `Bearer ${cfg.token}` },
+      body: form,
+      redirect: "error",
+      signal: AbortSignal.timeout(25000),
+    });
+    const data = (await r.json().catch(() => ({}))) as {
+      id?: unknown;
+      error?: { code?: number };
+    };
+    if (r.ok && typeof data.id === "string" && /^[A-Za-z0-9_-]{1,100}$/.test(data.id))
+      return { ok: true, id: data.id };
+    return {
+      ok: false,
+      error: `WhatsApp no aceptó el archivo: ${explainError(data.error?.code, `HTTP ${r.status}`)}`.slice(0, 500),
+    };
+  } catch {
+    return {
+      ok: false,
+      error: "Sin respuesta de WhatsApp al subir el archivo. Probá de nuevo.",
+    };
+  }
+}
+
 const GREETING_TTL_MS = 48 * 3600 * 1000;
 
 /** Claims due outbox rows and sends them. Safe to call concurrently: claims use SKIP LOCKED. */

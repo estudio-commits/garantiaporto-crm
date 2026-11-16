@@ -242,14 +242,78 @@ export type OutboxRow = {
   application_id: string | null;
   purpose: "greeting" | "reopen" | "manual" | "auto_reply" | "bot";
   to_phone: string;
-  kind: "text" | "template";
+  kind: "text" | "template" | SendMediaKind;
   body: string | null;
   template: { name: string; language: string; params?: string[] } | null;
+  media?: { id: string; filename?: string; mime_type?: string } | null;
   attempts: number;
   created_at: string;
 };
 
+export type SendMediaKind = "image" | "document" | "video";
+
+/** Files the team can send from the chat. Limits: WhatsApp's own, capped by what a Vercel request can carry. */
+export const SEND_MEDIA: Record<string, { kind: SendMediaKind; ext: string }> = {
+  "image/jpeg": { kind: "image", ext: "jpg" },
+  "image/png": { kind: "image", ext: "png" },
+  "application/pdf": { kind: "document", ext: "pdf" },
+  "video/mp4": { kind: "video", ext: "mp4" },
+  "video/3gpp": { kind: "video", ext: "3gp" },
+};
+export const SEND_MEDIA_ACCEPT = Object.keys(SEND_MEDIA).join(",");
+export const SEND_MEDIA_MAX_BYTES = 4 * 1024 * 1024;
+export const CAPTION_MAX = 1024;
+
+/** Safe display name for a sent document: keeps letters, digits, spaces, dots and dashes. */
+export function sendFileName(name: string, ext: string) {
+  const base = name
+    .normalize("NFC")
+    .replace(/\.[^.]*$/, "")
+    .replace(/[^\p{L}\p{N} ._-]+/gu, " ")
+    .replace(/\s+/g, " ")
+    .replace(/^[.\s]+|[.\s]+$/g, "")
+    .slice(0, 80)
+    .trim();
+  return `${base || "Documento"}.${ext}`;
+}
+
+/** Checks the file's first bytes, so a renamed file is not sent as something else. */
+export function fileMatchesType(bytes: Uint8Array, mime: string) {
+  const at = (offset: number, sig: number[]) =>
+    sig.every((b, i) => bytes[offset + i] === b);
+  switch (mime) {
+    case "image/jpeg":
+      return at(0, [0xff, 0xd8, 0xff]);
+    case "image/png":
+      return at(0, [0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]);
+    case "application/pdf":
+      return at(0, [0x25, 0x50, 0x44, 0x46, 0x2d]);
+    case "video/mp4":
+    case "video/3gpp":
+      return at(4, [0x66, 0x74, 0x79, 0x70]);
+    default:
+      return false;
+  }
+}
+
 export function messagePayload(to: string, row: OutboxRow) {
+  if (
+    (row.kind === "image" || row.kind === "document" || row.kind === "video") &&
+    row.media?.id
+  ) {
+    const caption = String(row.body ?? "").trim().slice(0, CAPTION_MAX);
+    const media: Record<string, string> = { id: row.media.id };
+    if (caption) media.caption = caption;
+    if (row.kind === "document" && row.media.filename)
+      media.filename = row.media.filename;
+    return {
+      messaging_product: "whatsapp",
+      recipient_type: "individual",
+      to,
+      type: row.kind,
+      [row.kind]: media,
+    };
+  }
   if (row.kind === "template" && row.template) {
     const params = (row.template.params ?? []).map((text) => ({
       type: "text",

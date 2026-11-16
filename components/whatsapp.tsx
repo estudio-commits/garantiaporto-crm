@@ -8,15 +8,21 @@ import {
   CircleAlert,
   ExternalLink,
   MessageCircle,
+  Paperclip,
   RefreshCw,
   Search,
   Send,
+  X,
 } from "lucide-react";
 import { supabase } from "@/lib/supabase";
 import { waDemoSeed } from "@/lib/demo";
 import type { Application, Profile } from "@/lib/domain";
 import { whatsappNumber } from "@/lib/phone";
 import {
+  CAPTION_MAX,
+  SEND_MEDIA,
+  SEND_MEDIA_ACCEPT,
+  SEND_MEDIA_MAX_BYTES,
   dayLabel,
   initials,
   listTime,
@@ -178,6 +184,114 @@ async function sendMessage(
   if (!r.ok) throw Error(data.error || "No se pudo enviar el mensaje.");
 }
 
+const fileSize = (bytes: number) =>
+  bytes < 1024 * 1024
+    ? `${Math.max(1, Math.round(bytes / 1024))} KB`
+    : `${(bytes / 1024 / 1024).toLocaleString("es-UY", { maximumFractionDigits: 1 })} MB`;
+
+/** Photos are re-encoded in the browser (max 2048 px, JPEG) so they fit what the CRM can send. */
+async function shrinkImage(file: File): Promise<File> {
+  if (file.size <= 1.5 * 1024 * 1024) return file;
+  try {
+    const bitmap = await createImageBitmap(file);
+    const scale = Math.min(1, 2048 / Math.max(bitmap.width, bitmap.height));
+    const canvas = document.createElement("canvas");
+    canvas.width = Math.round(bitmap.width * scale);
+    canvas.height = Math.round(bitmap.height * scale);
+    const ctx = canvas.getContext("2d");
+    if (!ctx) return file;
+    ctx.fillStyle = "#fff"; // transparent PNG areas become white, not black
+    ctx.fillRect(0, 0, canvas.width, canvas.height);
+    ctx.drawImage(bitmap, 0, 0, canvas.width, canvas.height);
+    bitmap.close();
+    const blob = await new Promise<Blob | null>((ok) =>
+      canvas.toBlob(ok, "image/jpeg", 0.85),
+    );
+    if (!blob || blob.size >= file.size) return file;
+    return new File([blob], file.name.replace(/\.[^.]*$/, "") + ".jpg", {
+      type: "image/jpeg",
+    });
+  } catch {
+    return file;
+  }
+}
+
+/** Checks a file chosen to send; returns the file to send or a message for the user. */
+async function prepareAttachment(
+  file: File,
+): Promise<{ file: File } | { error: string }> {
+  if (!SEND_MEDIA[file.type])
+    return {
+      error: "Solo se pueden enviar fotos (JPG o PNG), PDF y videos MP4.",
+    };
+  const ready = SEND_MEDIA[file.type]!.kind === "image" ? await shrinkImage(file) : file;
+  if (ready.size > SEND_MEDIA_MAX_BYTES)
+    return {
+      error:
+        SEND_MEDIA[file.type]!.kind === "video"
+          ? "El video supera los 4 MB que se pueden enviar desde el CRM. Recortalo o envialo desde el celular de la empresa."
+          : "El archivo supera los 4 MB que se pueden enviar desde el CRM.",
+    };
+  return { file: ready };
+}
+
+async function sendFile(
+  demo: boolean,
+  app: Application,
+  profile: Profile,
+  file: File,
+  caption: string,
+) {
+  const kind = SEND_MEDIA[file.type]?.kind ?? "document";
+  if (demo) {
+    const d = demoLoad();
+    const c = d.conversations.find((x) => x.application_id === app.id);
+    if (!c || !windowOpen(c.last_inbound_at))
+      throw Error(
+        "Pasaron más de 24 h desde el último mensaje del cliente. Enviá la plantilla para retomar la conversación.",
+      );
+    const now = new Date().toISOString();
+    d.messages.push({
+      id: crypto.randomUUID(),
+      conversation_id: c.id,
+      application_id: app.id,
+      wamid: null,
+      direction: "out",
+      author: "human",
+      author_id: profile.id,
+      kind,
+      body: caption,
+      media: { id: "demo", mime_type: file.type, filename: file.name },
+      status: "sent",
+      error: null,
+      created_at: now,
+      status_at: null,
+    });
+    d.conversations = d.conversations.map((x) =>
+      x.id === c.id ? { ...x, last_message_at: now, unread_count: 0 } : x,
+    );
+    demoSave(d);
+    return;
+  }
+  const form = new FormData();
+  form.append("application_id", app.id);
+  form.append("file", file, file.name);
+  if (caption) form.append("caption", caption);
+  const r = await fetch("/api/whatsapp/send-media", {
+    method: "POST",
+    headers: await authHeader(),
+    body: form,
+  });
+  const data = await r.json().catch(() => ({}));
+  if (!r.ok)
+    throw Error(
+      data.error ||
+        (r.status === 413
+          ? "El archivo supera los 4 MB que se pueden enviar desde el CRM."
+          : "No se pudo enviar el archivo."),
+    );
+}
+
 const time = (s: string) =>
   new Intl.DateTimeFormat("es-UY", {
     day: "2-digit",
@@ -243,6 +357,7 @@ export function WhatsAppPanel({
   const [messages, setMessages] = useState<WaMessage[]>([]),
     [conversation, setConversation] = useState<WaConversation | null>(null),
     [text, setText] = useState(""),
+    [attachment, setAttachment] = useState<File | null>(null),
     [consent, setConsent] = useState(false),
     // Consent ticked here is stored on the case by the server, so it is asked only once.
     [savedConsent, setSavedConsent] = useState(false),
@@ -250,6 +365,7 @@ export function WhatsAppPanel({
     [error, setError] = useState(""),
     [now, setNow] = useState(Date.now());
   const endRef = useRef<HTMLDivElement>(null);
+  const fileRef = useRef<HTMLInputElement>(null);
   const autoFiled = useRef(false);
   const load = useCallback(async () => {
     try {
@@ -313,11 +429,30 @@ export function WhatsAppPanel({
     !!conversation?.last_inbound_at ||
     savedConsent;
 
+  async function attach(file: File | undefined) {
+    if (fileRef.current) fileRef.current.value = "";
+    if (!file) return;
+    setError("");
+    const ready = await prepareAttachment(file);
+    if ("error" in ready) {
+      setAttachment(null);
+      setError(ready.error);
+    } else setAttachment(ready.file);
+  }
+
   async function send(action: SendAction) {
     setBusy(true);
     setError("");
     try {
-      await sendMessage(demo, app, profile, action, text.trim(), consent);
+      if (action === "text" && attachment) {
+        if (text.trim().length > CAPTION_MAX)
+          throw Error(
+            `El texto que acompaña el archivo admite hasta ${CAPTION_MAX} caracteres. Envialo como mensaje aparte.`,
+          );
+        await sendFile(demo, app, profile, attachment, text.trim());
+        setAttachment(null);
+      } else
+        await sendMessage(demo, app, profile, action, text.trim(), consent);
       if (action === "text") setText("");
       if (consent) {
         setSavedConsent(true);
@@ -382,7 +517,7 @@ export function WhatsAppPanel({
             )}
             <article
               className={`wa-bubble ${m.direction} ${m.status === "failed" ? "failed" : ""}`}
-              aria-label={`${authorLabel(m)}: ${m.body}`}
+              aria-label={`${authorLabel(m)}: ${m.body || (m.media ? mediaText(m) : "")}`}
             >
               {m.direction === "out" && (
                 <small className={`wa-author ${m.author}`}>
@@ -393,7 +528,7 @@ export function WhatsAppPanel({
               {m.media_status && (
                 <MediaState message={m} demo={demo} retried={load} />
               )}
-              {m.direction === "in" && m.media && !demo && (
+              {m.media?.id && !demo && (
                 <button
                   className="link-button wa-open"
                   onClick={() => openMedia(m.id)}
@@ -434,25 +569,71 @@ export function WhatsAppPanel({
           className="wa-compose"
           onSubmit={(e) => {
             e.preventDefault();
-            if (text.trim()) send("text");
+            if (!busy && (text.trim() || attachment)) send("text");
           }}
         >
+          {attachment && (
+            <div className="wa-attachment">
+              <span>
+                {SEND_MEDIA[attachment.type]?.kind === "image"
+                  ? "🖼️"
+                  : SEND_MEDIA[attachment.type]?.kind === "video"
+                    ? "🎬"
+                    : "📎"}{" "}
+                {attachment.name}{" "}
+                <small className="muted">{fileSize(attachment.size)}</small>
+              </span>
+              <button
+                type="button"
+                className="icon-button"
+                aria-label="Quitar archivo"
+                onClick={() => setAttachment(null)}
+              >
+                <X size={16} />
+              </button>
+            </div>
+          )}
+          <input
+            ref={fileRef}
+            type="file"
+            hidden
+            accept={SEND_MEDIA_ACCEPT}
+            aria-label="Archivo para enviar"
+            onChange={(e) => attach(e.target.files?.[0])}
+          />
+          <button
+            type="button"
+            className="icon-button wa-clip"
+            aria-label="Adjuntar foto, PDF o video"
+            title="Adjuntar foto, PDF o video (hasta 4 MB)"
+            disabled={busy || !valid}
+            onClick={() => fileRef.current?.click()}
+          >
+            <Paperclip size={18} />
+          </button>
           <textarea
             aria-label="Mensaje de WhatsApp"
             value={text}
             maxLength={4096}
             rows={2}
-            placeholder="Escribí tu respuesta…"
+            placeholder={
+              attachment
+                ? "Agregá un texto (opcional)…"
+                : "Escribí tu respuesta…"
+            }
             onChange={(e) => setText(e.target.value)}
             onKeyDown={(e) => {
               if (e.key === "Enter" && !e.shiftKey) {
                 e.preventDefault();
-                if (text.trim()) send("text");
+                if (!busy && (text.trim() || attachment)) send("text");
               }
             }}
           />
-          <button className="primary" disabled={busy || !text.trim() || !valid}>
-            <Send size={16} /> Enviar
+          <button
+            className="primary"
+            disabled={busy || (!text.trim() && !attachment) || !valid}
+          >
+            <Send size={16} /> {busy && attachment ? "Enviando…" : "Enviar"}
           </button>
         </form>
       ) : (
@@ -803,7 +984,7 @@ async function fileCaseMedia(applicationId: string) {
   }).catch(() => undefined);
 }
 
-/** Opens a file the client sent, straight from WhatsApp (works even if it is not in Drive). */
+/** Opens a file from the chat, straight from WhatsApp (works even if it is not in Drive). */
 async function openMedia(messageId: string) {
   const tab = window.open("", "_blank");
   const r = await fetch(
@@ -822,9 +1003,9 @@ async function openMedia(messageId: string) {
   setTimeout(() => URL.revokeObjectURL(url), 60000);
 }
 
-/** What the client sent, by kind: WhatsApp voice notes and videos carry no file name. */
+/** A file in the chat, by kind: WhatsApp voice notes and videos carry no file name. */
 function mediaText(m: WaMessage) {
-  const name = m.media?.filename || m.body;
+  const name = m.media?.filename;
   switch (m.kind) {
     case "audio":
       return "🎤 Nota de voz";
@@ -833,9 +1014,9 @@ function mediaText(m: WaMessage) {
     case "sticker":
       return "Sticker";
     case "image":
-      return `🖼️ ${name || "Imagen"}`;
+      return `🖼️ ${m.body || name || "Imagen"}`;
     default:
-      return `📎 ${name || "Documento"}`;
+      return `📎 ${name || m.body || "Documento"}${name && m.body && m.body !== name ? ` · ${m.body}` : ""}`;
   }
 }
 

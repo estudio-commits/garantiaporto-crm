@@ -2,8 +2,10 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { createHmac } from "node:crypto";
 import {
+  fileMatchesType,
   messagePayload,
   parseWebhook,
+  sendFileName,
   shouldRetry,
   windowOpen,
   type OutboxRow,
@@ -11,6 +13,7 @@ import {
 import {
   graphSend,
   processOutbox,
+  uploadMedia,
   verifySignature,
   type WaConfig,
 } from "../lib/whatsapp-server";
@@ -863,4 +866,68 @@ test("voice notes are filed in a 'Notas de voz' subfolder, named by date and tim
   )!;
   assert.match(String(upload.init!.body), /"parents":\["VOICEFOLDER123"\]/);
   assert.match(String(upload.init!.body), /2026-11-17 1534 Nota de voz\.ogg/);
+});
+
+test("builds payloads for photos, PDFs and videos sent from the chat", () => {
+  const media = (kind: "image" | "document" | "video", body: string | null) =>
+    messagePayload(
+      "59899000001",
+      row({
+        purpose: "manual",
+        kind,
+        body,
+        template: null,
+        media: { id: "MEDIA_1", filename: "Contrato.pdf", mime_type: "application/pdf" },
+      }),
+    ) as unknown as Record<string, Record<string, string>>;
+  assert.deepEqual(media("document", "Te mando el contrato"), {
+    messaging_product: "whatsapp",
+    recipient_type: "individual",
+    to: "59899000001",
+    type: "document",
+    document: { id: "MEDIA_1", caption: "Te mando el contrato", filename: "Contrato.pdf" },
+  });
+  // Photos and videos carry no file name; an empty caption is left out.
+  assert.deepEqual(media("image", null).image, { id: "MEDIA_1" });
+  assert.deepEqual(media("video", "  ").video, { id: "MEDIA_1" });
+  assert.equal(media("image", "x".repeat(2000)).image.caption.length, 1024);
+});
+
+test("checks sent files by their first bytes and cleans their names", () => {
+  const b = (...xs: number[]) => Uint8Array.from(xs);
+  assert.ok(fileMatchesType(b(0xff, 0xd8, 0xff, 0xe0), "image/jpeg"));
+  assert.ok(fileMatchesType(b(0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a), "image/png"));
+  assert.ok(fileMatchesType(new TextEncoder().encode("%PDF-1.7"), "application/pdf"));
+  assert.ok(fileMatchesType(b(0, 0, 0, 0x18, 0x66, 0x74, 0x79, 0x70), "video/mp4"));
+  assert.equal(fileMatchesType(new TextEncoder().encode("<html>"), "application/pdf"), false);
+  assert.equal(fileMatchesType(b(0xff, 0xd8, 0xff), "image/png"), false);
+  assert.equal(fileMatchesType(b(0xff, 0xd8, 0xff), "text/html"), false);
+  assert.equal(sendFileName("Recibo de sueldo (octubre).PDF", "pdf"), "Recibo de sueldo octubre.pdf");
+  assert.equal(sendFileName("../../etc/passwd", "pdf"), "Documento.pdf");
+  assert.equal(sendFileName("a.b.c.pdf", "pdf"), "a.b.c.pdf");
+  assert.equal(sendFileName("", "pdf"), "Documento.pdf");
+  assert.equal(sendFileName("Señal ñandú", "jpg"), "Señal ñandú.jpg");
+});
+
+test("uploads a file to WhatsApp and returns its media id", async () => {
+  let seen: { url: string; form: FormData } | undefined;
+  const ok = await uploadMedia(cfg, new Blob(["%PDF-1.7"]), "application/pdf", "Contrato.pdf", (async (
+    url: string,
+    init: RequestInit,
+  ) => {
+    seen = { url, form: init.body as FormData };
+    return Response.json({ id: "MEDIA_9" });
+  }) as typeof fetch);
+  assert.deepEqual(ok, { ok: true, id: "MEDIA_9" });
+  assert.equal(seen!.url, `${cfg.apiBase}/${cfg.phoneNumberId}/media`);
+  assert.equal(seen!.form.get("messaging_product"), "whatsapp");
+  assert.equal(seen!.form.get("type"), "application/pdf");
+  assert.equal((seen!.form.get("file") as File).name, "Contrato.pdf");
+  const bad = await uploadMedia(cfg, new Blob(["x"]), "application/pdf", "a.pdf", (async () =>
+    Response.json({ error: { code: 131053 } }, { status: 400 })) as unknown as typeof fetch);
+  assert.equal(bad.ok, false);
+  const down = await uploadMedia(cfg, new Blob(["x"]), "application/pdf", "a.pdf", (async () => {
+    throw Error("offline");
+  }) as typeof fetch);
+  assert.equal(down.ok, false);
 });
