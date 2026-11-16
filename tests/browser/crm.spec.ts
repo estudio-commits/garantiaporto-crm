@@ -701,3 +701,34 @@ test("university clients show and keep the number of students", async ({
     .selectOption("tradicional");
   await expect(students).toHaveCount(0);
 });
+test("an owner is finalized without follow-up and moves to the Propietarios tab", async ({
+  page,
+}) => {
+  await page.goto("/");
+  await pipeline(page);
+  await page
+    .getByRole("article", { name: "Solicitud Lucía Ejemplo", exact: true })
+    .dragTo(
+      page.getByRole("region", { name: "Etapa Finalizado", exact: true }),
+      {
+        sourcePosition: { x: 220, y: 20 },
+        targetPosition: { x: 100, y: 20 },
+      },
+    );
+  const dialog = page.getByRole("dialog", { name: "Programar seguimiento" });
+  await dialog.getByRole("button", { name: "Es propietario" }).click();
+  await expect(dialog).toHaveCount(0);
+  await expect(
+    page.getByRole("article", { name: "Solicitud Lucía Ejemplo", exact: true }),
+  ).toHaveCount(0);
+  await nav(page, "Lista de clientes").click();
+  await expect(page.locator("tr", { hasText: "Lucía Ejemplo" })).toHaveCount(0);
+  await page.getByRole("button", { name: "Propietarios", exact: true }).click();
+  await page.locator("tr", { hasText: "Lucía Ejemplo" }).first().click();
+  await expect(
+    page.getByRole("combobox", { name: "Tipo de cliente" }),
+  ).toHaveValue("propietario");
+  await expect(
+    page.getByRole("combobox", { name: "Tipo de garantía" }),
+  ).toHaveCount(0);
+});

@@ -936,3 +936,27 @@ test("universitaria web confirmation includes the students from the form instead
     "Perfecto, Bruno! Antes de enviarte la documentación necesaria, me confirmás si están correctos estos datos? C.I.: 456.789-0. Alquiler mensual: $ 30.000. Estudiantes: 2.",
   );
 });
+
+test("owners never raise follow-up alerts", async () => {
+  const { followUp } = await import("../lib/workflow");
+  const base = {
+    id: "o1",
+    archived: false,
+    stage: "en_contacto",
+    guarantee_stage: "sin_contactar",
+    created_at: "2026-11-01T12:00:00Z",
+    follow_up_date: null,
+  } as never;
+  assert.equal(
+    followUp(base, [], Date.parse("2026-11-16T12:00:00Z")),
+    "urgente",
+  );
+  assert.equal(
+    followUp(
+      { ...(base as object), client_type: "propietario" } as never,
+      [],
+      Date.parse("2026-11-16T12:00:00Z"),
+    ),
+    null,
+  );
+});

@@ -31,6 +31,7 @@ export function upgradeStore(s: Store): Store {
     ],
     applications: s.applications.map((a) => ({
       ...migrateApplication(a),
+      client_type: a.client_type ?? "inquilino",
       wa_consent:
         a.wa_consent ?? !!String(a.attribution?.consent_evidence ?? "").trim(),
       national_id:

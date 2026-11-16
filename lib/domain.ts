@@ -83,6 +83,8 @@ export type Application = {
   wa_consent?: boolean;
   /** Garantía universitaria: cuántos estudiantes se presentan (formulario web, asistente o equipo). */
   student_count?: number | null;
+  /** Inquilino (default) o propietario: un propietario no es una oportunidad de garantía. */
+  client_type?: "inquilino" | "propietario";
   drive_folder_url?: string | null;
   preapproval: string;
   documentation: string;

@@ -187,5 +187,13 @@ do $$declare r jsonb; aid uuid; begin
    'data',jsonb_build_object('full_name','Sin Tipo Ficticio','phone','099000183'),'extra',jsonb_build_object('garantia_tipo','<script>')));
  if (select guarantee_type from applications where full_name='Sin Tipo Ficticio')<>'tradicional' then raise exception 'Unknown guarantee type accepted';end if;
 end $$;
+-- Migration 020: an owner is finalized without a follow-up date; a tenant still needs one.
+do $$declare aid uuid; begin
+ insert into applications(full_name,phone,national_id) values('Propietaria Ficticia','099000201','2345678-9') returning id into aid;
+ begin update applications set stage='finalizado' where id=aid; raise exception 'Tenant finalized without follow-up'; exception when raise_exception then if sqlerrm='Tenant finalized without follow-up' then raise; end if; end;
+ update applications set stage='finalizado',client_type='propietario' where id=aid;
+ if (select stage from applications where id=aid)<>'finalizado' or (select follow_up_date from applications where id=aid) is not null then raise exception 'Owner not finalized cleanly';end if;
+ begin update applications set client_type='inmobiliaria' where id=aid; raise exception 'Unknown client type accepted'; exception when check_violation then null; end;
+end $$;
 rollback;
 \echo 'Database permission and ingestion checks passed'
