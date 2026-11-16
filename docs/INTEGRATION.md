@@ -15,7 +15,7 @@ Pendiente en staging: cola duradera del emisor, reintentos con backoff, concilia
 
 ## Marketing e identidad (migración 007)
 
-`data` admite además fbclid, referrer, landing_page, form_id y button_id. Es estricto: una clave desconocida devuelve 422 y debe mapearse a extra; nunca se elimina silenciosamente. `extra` conserva campos escalares acotados en el evento original (admin). Campos conocidos de marketing dentro de extra se proyectan a attribution con prioridad del primer valor no vacío, sin exponer extras arbitrarios.
+`data` admite además fbclid, referrer, landing_page, form_id y button_id. Es estricto: una clave desconocida devuelve 422 y debe mapearse a extra; nunca se elimina silenciosamente. `extra` conserva campos escalares acotados en el evento original (admin). Campos conocidos de marketing dentro de extra se proyectan a attribution con prioridad del primer valor no vacío, sin exponer extras arbitrarios. `extra.garantia_tipo` (`tradicional`, `universitaria` o `rural`) fija el tipo de garantía del caso (migración 018); otro valor se ignora. En universitaria `monthly_income` puede ir vacío o `null`.
 
 CI válida de 7 u 8 dígitos, con o sin formato, completa applications.national_id sin sustituir una identidad existente distinta. CI inválida o conflictiva conserva el evento y marca discrepancia para revisión. La CI no es el identificador idempotente: solicitud_id/event_id siguen siendo UUID. La ausencia de CI en paso 1 no bloquea un prospecto.
 

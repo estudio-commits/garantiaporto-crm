@@ -172,5 +172,18 @@ set local role authenticated;
 set local request.jwt.claim.sub='00000000-0000-4000-8000-000000000002';
 do $$begin if exists(select 1 from applications) then raise exception 'Inactive user access';end if;end $$;
 reset role;
+-- Migration 018: the web form's guarantee type reaches the case.
+do $$declare r jsonb; aid uuid; begin
+ r=ingest_event(jsonb_build_object('schema_version',1,'event_id','20000000-0000-4000-8000-000000000181','solicitud_id','30000000-0000-4000-8000-000000000181','step',1,'sent_at','2026-11-16T12:00:00Z',
+   'data',jsonb_build_object('full_name','Estudiante Ficticia','phone','099000181','rent_amount',30000,'rent_currency','UYU'),'extra',jsonb_build_object('garantia_tipo','universitaria')));
+ aid=(r->>'application_id')::uuid;
+ if (select guarantee_type from applications where id=aid)<>'universitaria' then raise exception 'Web guarantee type not stored';end if;
+ perform ingest_event(jsonb_build_object('schema_version',1,'event_id','20000000-0000-4000-8000-000000000182','solicitud_id','30000000-0000-4000-8000-000000000181','step',2,'sent_at','2026-11-16T12:05:00Z',
+   'data',jsonb_build_object('full_name','Estudiante Ficticia','phone','099000181','national_id','1.234.567-2','monthly_income',null),'extra',jsonb_build_object('garantia_tipo','universitaria')));
+ if (select guarantee_type from applications where id=aid)<>'universitaria' or (select completion from applications where id=aid)<>'completo' then raise exception 'Universitaria step 2 without income failed';end if;
+ perform ingest_event(jsonb_build_object('schema_version',1,'event_id','20000000-0000-4000-8000-000000000183','solicitud_id','30000000-0000-4000-8000-000000000183','step',1,'sent_at','2026-11-16T12:00:00Z',
+   'data',jsonb_build_object('full_name','Sin Tipo Ficticio','phone','099000183'),'extra',jsonb_build_object('garantia_tipo','<script>')));
+ if (select guarantee_type from applications where full_name='Sin Tipo Ficticio')<>'tradicional' then raise exception 'Unknown guarantee type accepted';end if;
+end $$;
 rollback;
 \echo 'Database permission and ingestion checks passed'
