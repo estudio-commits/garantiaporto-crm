@@ -2,8 +2,8 @@ import { createClient } from "@supabase/supabase-js";
 import { z } from "zod";
 import { driveConfig } from "@/lib/drive";
 import {
-  downloadMedia,
   drainMedia,
+  streamMedia,
   readLimited,
   serviceClient,
   waConfig,
@@ -57,10 +57,11 @@ export async function GET(req: Request) {
   const media = m?.media as { id?: string; filename?: string } | null;
   if (!m || m.direction !== "in" || !media?.id)
     return fail("No tenés acceso a este archivo.", 404);
-  const file = await downloadMedia(cfg, media.id);
-  if (!file.ok) return fail(file.error, file.retry ? 502 : 410);
+  const file = await streamMedia(cfg, media.id);
+  if (!file.ok) return fail(file.error, file.status);
   const name = (media.filename || "archivo").replace(/[^\w.\- ]+/g, "_");
-  return new Response(new Uint8Array(file.bytes), {
+  // Streamed, not buffered: voice notes and videos can be several MB.
+  return new Response(file.body, {
     headers: {
       "content-type": file.mime,
       "content-disposition": `inline; filename="${name}"`,

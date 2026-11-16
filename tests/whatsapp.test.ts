@@ -742,3 +742,39 @@ test("drainMedia keeps filing until every file of a batch is stored", async () =
   assert.equal(r.stored, 12);
   assert.equal(stored.length, 12);
 });
+
+test("streamMedia opens voice notes and videos from WhatsApp, not only documents", async () => {
+  const { streamMedia } = await import("../lib/whatsapp-server");
+  const ogg = Buffer.from("OggS nota de voz ficticia");
+  const ok = await streamMedia(
+    cfg,
+    "MEDIA1",
+    fakeMeta(ogg, {
+      mime_type: "audio/ogg; codecs=opus",
+      file_size: ogg.length,
+    }) as typeof fetch,
+  );
+  assert.ok(ok.ok);
+  if (ok.ok) {
+    assert.equal(ok.mime, "audio/ogg");
+    assert.equal(
+      Buffer.from(await new Response(ok.body).arrayBuffer()).toString(),
+      ogg.toString(),
+    );
+  }
+  const exe = await streamMedia(
+    cfg,
+    "MEDIA1",
+    fakeMeta(ogg, {
+      mime_type: "application/x-msdownload",
+      file_size: ogg.length,
+    }) as typeof fetch,
+  );
+  assert.equal(exe.ok, false);
+  const bad = await streamMedia(
+    cfg,
+    "../secret",
+    fakeMeta(ogg, {}) as typeof fetch,
+  );
+  assert.equal(bad.ok, false);
+});

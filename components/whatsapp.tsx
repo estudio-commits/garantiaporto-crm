@@ -389,12 +389,21 @@ export function WhatsAppPanel({
                   {authorLabel(m)}
                 </small>
               )}
-              <p>
-                {m.media ? "📎 " : ""}
-                {m.body || (m.media ? "Archivo adjunto" : "")}
-              </p>
+              <p>{m.media ? mediaText(m) : m.body}</p>
               {m.media_status && (
                 <MediaState message={m} demo={demo} retried={load} />
+              )}
+              {m.direction === "in" && m.media && !demo && (
+                <button
+                  className="link-button wa-open"
+                  onClick={() => openMedia(m.id)}
+                >
+                  {m.kind === "audio"
+                    ? "Escuchar audio"
+                    : m.kind === "video"
+                      ? "Ver video"
+                      : "Ver archivo"}
+                </button>
               )}
               <small className="wa-status" title={time(m.created_at)}>
                 {hour(m.created_at)}
@@ -702,7 +711,7 @@ export function WhatsAppInbox({
                       <span className="wa-preview">
                         {m?.direction === "out" && <Ticks status={m.status} />}
                         {m
-                          ? `${m.direction === "out" ? (m.author === "bot" ? "Asistente: " : m.author === "system" ? "" : "Vos: ") : ""}${m.body || "📎 Archivo adjunto"}`
+                          ? `${m.direction === "out" ? (m.author === "bot" ? "Asistente: " : m.author === "system" ? "" : "Vos: ") : ""}${m.body || mediaText(m)}`
                           : "Sin mensajes"}
                       </span>
                       {c.needs_human && (
@@ -813,6 +822,23 @@ async function openMedia(messageId: string) {
   setTimeout(() => URL.revokeObjectURL(url), 60000);
 }
 
+/** What the client sent, by kind: WhatsApp voice notes and videos carry no file name. */
+function mediaText(m: WaMessage) {
+  const name = m.media?.filename || m.body;
+  switch (m.kind) {
+    case "audio":
+      return "🎤 Nota de voz";
+    case "video":
+      return `🎬 Video${m.body ? `: ${m.body}` : ""}`;
+    case "sticker":
+      return "Sticker";
+    case "image":
+      return `🖼️ ${name || "Imagen"}`;
+    default:
+      return `📎 ${name || "Documento"}`;
+  }
+}
+
 const mediaLabel: Record<string, string> = {
   pending: "Guardando en Drive…",
   processing: "Guardando en Drive…",
@@ -842,14 +868,6 @@ function MediaState({
           <a href={link} target="_blank" rel="noopener noreferrer">
             Ver en Drive
           </a>
-        </>
-      )}
-      {!demo && m.direction === "in" && m.media && (
-        <>
-          {" · "}
-          <button className="link-button" onClick={() => openMedia(m.id)}>
-            Ver archivo
-          </button>
         </>
       )}
       {(m.media_status === "failed" ||
