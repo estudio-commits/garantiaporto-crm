@@ -1,7 +1,7 @@
 import { driveConfig } from "@/lib/drive";
 import {
   processCaseFolders,
-  processMedia,
+  drainMedia,
   processOutbox,
   safeEqual,
   serviceClient,
@@ -36,6 +36,6 @@ export async function GET(req: Request) {
     };
     if (r.claimed < 20) break;
   }
-  const media = await processMedia(db, cfg, driveConfig(), 10);
+  const media = await drainMedia(db, cfg, driveConfig(), 30000);
   return Response.json({ ...total, media, folders });
 }

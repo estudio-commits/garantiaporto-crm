@@ -357,6 +357,26 @@ export function mediaFileName(
   return `${stamp} WhatsApp - ${original}.${ext}`;
 }
 
+/** Files pending documents in batches of 5 until none is left or the time budget runs out. */
+export async function drainMedia(
+  db: SupabaseClient,
+  cfg: WaConfig,
+  drive: DriveConfig,
+  budgetMs = 40000,
+  fetcher: typeof fetch = fetch,
+) {
+  const start = Date.now();
+  let stored = 0,
+    failed = 0;
+  while (Date.now() - start < budgetMs) {
+    const r = await processMedia(db, cfg, drive, 5, fetcher);
+    stored += r.stored;
+    failed += r.failed;
+    if (r.claimed < 5) break;
+  }
+  return { stored, failed };
+}
+
 /** Claims pending media and files each one in the case folder (creating it when the case has none). */
 export async function processMedia(
   db: SupabaseClient,
