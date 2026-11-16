@@ -60,7 +60,10 @@ do $$declare r jsonb; m uuid; ana uuid=(select id from applications where full_n
  m=(r->>'message_id')::uuid;
  if (select media_status from wa_messages where id=m) is distinct from 'pending' then raise exception 'Document not queued for Drive';end if;
  perform wa_record_inbound('{"wamid":"wamid.AUD1","from":"59899000001","kind":"audio","media":{"id":"MEDIA2"}}');
- if (select media_status from wa_messages where wamid='wamid.AUD1') is not null then raise exception 'Audio queued for Drive';end if;
+ -- Migration 021: voice notes are filed too; videos stay in the chat.
+ if (select media_status from wa_messages where wamid='wamid.AUD1') is distinct from 'pending' then raise exception 'Voice note not queued for Drive';end if;
+ perform wa_record_inbound('{"wamid":"wamid.VID1","from":"59899000001","kind":"video","media":{"id":"MEDIA3"}}');
+ if (select media_status from wa_messages where wamid='wamid.VID1') is not null then raise exception 'Video queued for Drive';end if;
  if not exists(select 1 from wa_claim_media(5) where id=m) then raise exception 'Media not claimed';end if;
  begin perform wa_complete_media(m,'stored','F1','https://evil.example/x',null,null,false);raise exception 'Non-Drive URL accepted';exception when raise_exception then if sqlerrm='Non-Drive URL accepted' then raise;end if;end;
  perform wa_complete_media(m,'stored','F1','https://drive.google.com/file/d/F1/view','https://drive.google.com/drive/folders/NEWFOLDER123',null,false);

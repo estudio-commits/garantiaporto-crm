@@ -14,6 +14,7 @@ import {
 import {
   DriveError,
   ensureCaseFolder,
+  ensureVoiceNotesFolder,
   syncCaseFolderName,
   folderIdFromUrl,
   folderUrl,
@@ -200,6 +201,12 @@ const MEDIA_TYPES: Record<string, string> = {
   "application/msword": "doc",
   "application/vnd.openxmlformats-officedocument.wordprocessingml.document":
     "docx",
+  // Voice notes (filed in "Notas de voz" inside the case folder).
+  "audio/ogg": "ogg",
+  "audio/mpeg": "mp3",
+  "audio/mp4": "m4a",
+  "audio/aac": "aac",
+  "audio/amr": "amr",
 };
 export const mediaExtension = (mime: string) =>
   MEDIA_TYPES[mime.split(";")[0].trim().toLowerCase()];
@@ -438,6 +445,7 @@ export function mediaFileName(
     .slice(0, 16)
     .replace(":", "");
   const ext = mediaExtension(mime) ?? "bin";
+  if (kind === "audio") return `${stamp} Nota de voz.${ext}`;
   const original = media.filename
     ? safeName(media.filename).replace(/\.[A-Za-z0-9]{1,5}$/, "")
     : kind === "image"
@@ -522,9 +530,19 @@ export async function processMedia(
           );
           newFolderUrl = folderUrl(folder);
         }
+        // Voice notes go to their own subfolder so documents stay easy to find.
+        const target =
+          row.kind === "audio"
+            ? await ensureVoiceNotesFolder(
+                drive,
+                folder,
+                row.application_id,
+                fetcher,
+              )
+            : folder;
         const up = await uploadFile(
           drive,
-          folder,
+          target,
           mediaFileName(row.kind, row.media, media.mime, row.created_at),
           media.mime,
           media.bytes,
