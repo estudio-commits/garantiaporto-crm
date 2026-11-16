@@ -265,7 +265,7 @@ do $$declare aid uuid; o wa_outbox; m wa_messages; begin
  begin insert into wa_outbox(application_id,purpose,to_phone,kind) values(aid,'manual','+59899000063','image');raise exception 'Media row without media id';exception when check_violation then null;end;
  begin insert into wa_outbox(application_id,purpose,to_phone,kind,media) values(aid,'manual','+59899000063','image','{"id":"../x"}');raise exception 'Unsafe media id accepted';exception when check_violation then null;end;
  begin insert into wa_outbox(application_id,purpose,to_phone,kind,media) values(aid,'bot','+59899000063','image','{"id":"MEDIA_1"}');raise exception 'Only the team sends files';exception when check_violation then null;end;
- begin insert into wa_outbox(application_id,purpose,to_phone,kind,media) values(aid,'manual','+59899000063','audio','{"id":"MEDIA_1"}');raise exception 'Audio kind accepted';exception when check_violation then null;end;
+ begin insert into wa_outbox(application_id,purpose,to_phone,kind,media) values(aid,'manual','+59899000063','sticker','{"id":"MEDIA_1"}');raise exception 'Sticker kind accepted';exception when check_violation then null;end;
  select * into o from wa_claim_outbox(10) where id=o.id;
  if o.media->>'id'<>'MEDIA_022' then raise exception 'Claim lost the media';end if;
  perform wa_complete_outbox(o.id,'59899000063','wamid.OUT022',null,false);
@@ -280,6 +280,18 @@ do $$declare aid uuid; o wa_outbox; m wa_messages; begin
  if (select body from wa_messages where wamid='wamid.OUT023')<>'' then raise exception 'Photo without caption got a text';end if;
  -- Templates still read "Plantilla: name".
  if not exists(select 1 from wa_messages where wamid='wamid.OUT1' and body like 'Plantilla: %') then raise exception 'Template text changed';end if;
+end $$;
+-- Migration 023: voice notes and audio files sent from the CRM chat (no text).
+do $$declare aid uuid; o wa_outbox; m wa_messages; begin
+ select id into aid from applications where full_name='Envio Archivo';
+ begin insert into wa_outbox(application_id,purpose,to_phone,kind,body,media) values(aid,'manual','+59899000063','audio','Hola','{"id":"AUDIO_1"}');raise exception 'Audio with text accepted';exception when check_violation then null;end;
+ insert into wa_outbox(application_id,purpose,to_phone,kind,media,created_by)
+ values(aid,'manual','+59899000063','audio','{"id":"AUDIO_023","mime_type":"audio/ogg","filename":"Nota de voz.ogg","voice":true}','00000000-0000-4000-8000-0000000000a1') returning * into o;
+ select * into o from wa_claim_outbox(10) where id=o.id;
+ perform wa_complete_outbox(o.id,'59899000063','wamid.OUT024',null,false);
+ select * into m from wa_messages where wamid='wamid.OUT024';
+ if m.kind<>'audio' or m.body<>'' or (m.media->>'voice')::boolean is not true or m.author<>'human' then raise exception 'Voice note not recorded: %',row_to_json(m);end if;
+ if m.media_status is not null then raise exception 'Team voice note queued for Drive';end if;
 end $$;
 rollback;
 \echo 'WhatsApp checks passed'

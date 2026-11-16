@@ -143,22 +143,33 @@ Cuando el cliente manda un **PDF, una imagen o un Word** (hasta 20 MB) por Whats
 - Los videos y stickers quedan solo en el chat (se ven con **Ver video** / **Ver archivo** mientras WhatsApp los conserve, unos 30 días).
 - **Los archivos no se guardan en la base del CRM.**
 
-### Enviar fotos, PDF y videos desde el CRM
+### Enviar fotos, PDF, videos y audios desde el CRM
 
 En el chat, el botón del clip (📎) permite enviarle al cliente:
 
 - **Fotos** JPG o PNG. Las fotos grandes se achican en el navegador (hasta 2048 px) antes de enviarlas.
 - **PDF**, con su nombre de archivo.
 - **Videos** MP4.
+- **Audios** MP3, M4A, AAC u OGG. WhatsApp no admite texto junto a un audio: si se escribe algo, se envía como mensaje aparte, justo después.
 
 Lo que se escriba en el cuadro de texto va como descripción del archivo (hasta 1024 caracteres). Reglas:
 
 - Solo dentro de las **24 h** desde el último mensaje del cliente, igual que los mensajes de texto. Fuera de ese plazo hay que enviar la plantilla.
 - Hasta **4 MB** por archivo (límite de lo que puede recibir el servidor del CRM). Para un video más pesado, recortarlo o enviarlo desde el celular de la empresa.
 - El archivo pasa por el servidor del CRM solo en tránsito y se sube a WhatsApp; el CRM guarda el identificador de WhatsApp para poder verlo después desde el chat (**Ver archivo**), mientras WhatsApp lo conserve. Lo que envía el equipo **no** se guarda en Drive.
-- Las notas de voz todavía no se pueden enviar desde el CRM (ver `docs/PENDIENTES.md`).
+Requiere la migración 022 (y la 023 para los audios).
 
-Requiere la migración 022.
+### Notas de voz
+
+El botón del micrófono (🎤) graba una nota de voz con el micrófono de la computadora o del celular:
+
+1. Tocar el micrófono. La primera vez el navegador pide permiso para usarlo.
+2. Mientras graba se ve el tiempo. **Enviar nota de voz** la manda; el tacho la descarta.
+3. Le llega al cliente como nota de voz de WhatsApp (ícono de micrófono). Máximo 10 minutos.
+
+Cómo funciona: Chrome, Edge y Safari graban en WebM/Opus y Firefox en OGG/Opus. El CRM reempaqueta el audio a OGG/Opus en el navegador, sin recodificarlo ni enviarlo a otros servicios, que es el formato que WhatsApp muestra como nota de voz. Si un navegador antiguo solo graba en M4A, se envía como audio común. Las notas de voz que envía el equipo no se guardan en Drive (las del cliente sí).
+
+Requiere la migración 023.
 
 ### Configuración (una sola vez, con una cuenta administradora de Workspace)
 

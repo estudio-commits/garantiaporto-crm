@@ -643,7 +643,7 @@ test("the team attaches a PDF in the WhatsApp chat and sends it with a text", as
     buffer: Buffer.from("PK"),
   });
   await expect(panel.getByRole("alert")).toContainText(
-    "Solo se pueden enviar fotos (JPG o PNG), PDF y videos MP4.",
+    "Solo se pueden enviar fotos (JPG o PNG), PDF, videos MP4 y audios",
   );
   await expect(panel.locator(".wa-attachment")).toHaveCount(0);
   await panel.getByLabel("Archivo para enviar").setInputFiles({
@@ -656,10 +656,95 @@ test("the team attaches a PDF in the WhatsApp chat and sends it with a text", as
   const sent = panel.getByRole("article", {
     name: "Equipo: Te mando el contrato.",
   });
-  await expect(sent).toContainText("📎 Contrato ficticio.pdf · Te mando el contrato.");
+  await expect(sent).toContainText(
+    "📎 Contrato ficticio.pdf · Te mando el contrato.",
+  );
   await expect(sent).toContainText("Enviado");
   await expect(panel.locator(".wa-attachment")).toHaveCount(0);
   await expect(panel.getByLabel("Mensaje de WhatsApp")).toHaveValue("");
+});
+
+test("the team records a voice note and sends an audio file in the WhatsApp chat", async ({
+  page,
+  context,
+}) => {
+  // The site lets its own pages use the microphone (and nothing else, nobody else).
+  const headers = (await page.request.get("/")).headers();
+  expect(headers["permissions-policy"]).toBe(
+    "camera=(), microphone=(self), geolocation=()",
+  );
+  // A generated tone stands in for the microphone; recording and conversion run for real.
+  await context.addInitScript(() => {
+    navigator.mediaDevices.getUserMedia = async () => {
+      const ctx = new AudioContext({ sampleRate: 48000 });
+      const tone = ctx.createOscillator();
+      const out = ctx.createMediaStreamDestination();
+      out.channelCount = 1;
+      tone.connect(out);
+      tone.start();
+      return out.stream;
+    };
+  });
+  await page.goto("/");
+  await nav(page, "WhatsApp").click();
+  await page
+    .getByRole("button", { name: /^Abrir conversación con Bruno Demostración/ })
+    .click();
+  const panel = page.getByRole("region", { name: "Conversación de WhatsApp" });
+  await panel.getByRole("button", { name: "Grabar nota de voz" }).click();
+  await expect(
+    panel.getByRole("status", { name: "Grabación de nota de voz" }),
+  ).toContainText("Grabando nota de voz");
+  await expect(
+    panel.getByRole("status", { name: "Grabación de nota de voz" }),
+  ).toContainText("0:02", {
+    timeout: 6000,
+  });
+  await panel.getByRole("button", { name: "Enviar nota de voz" }).click();
+  const note = panel.getByRole("article", { name: "Equipo: 🎤 Nota de voz" });
+  await expect(note).toContainText("Enviado");
+  await expect(
+    panel.getByRole("status", { name: "Grabación de nota de voz" }),
+  ).toHaveCount(0);
+  // The browser recording (WebM) was repackaged as an Ogg/Opus voice note.
+  const stored = await page.evaluate(() => {
+    const d = JSON.parse(
+      localStorage.getItem("porto-demo-whatsapp-v1") ?? "{}",
+    );
+    return d.messages.at(-1).media;
+  });
+  expect(stored).toMatchObject({
+    mime_type: "audio/ogg",
+    voice: true,
+    filename: "Nota de voz.ogg",
+  });
+  // A cancelled recording sends nothing.
+  await panel.getByRole("button", { name: "Grabar nota de voz" }).click();
+  await panel.getByRole("button", { name: "Cancelar nota de voz" }).click();
+  await expect(
+    panel.getByRole("status", { name: "Grabación de nota de voz" }),
+  ).toHaveCount(0);
+  await expect(
+    panel.getByRole("article", { name: "Equipo: 🎤 Nota de voz" }),
+  ).toHaveCount(1);
+  // An audio file goes without text; the text follows as its own message.
+  await panel.getByLabel("Archivo para enviar").setInputFiles({
+    name: "explicacion.mp3",
+    mimeType: "audio/mpeg",
+    buffer: Buffer.from("ID3 ficticio"),
+  });
+  await panel
+    .getByLabel("Mensaje de WhatsApp")
+    .fill("Te dejo el audio con la explicación.");
+  await panel.getByRole("button", { name: "Enviar" }).click();
+  await expect(
+    panel.getByRole("article", { name: "Equipo: 🎵 explicacion.mp3" }),
+  ).toContainText("Enviado");
+  await expect(
+    panel.getByRole("article", {
+      name: "Equipo: Te dejo el audio con la explicación.",
+    }),
+  ).toBeVisible();
 });
 
 test("WhatsApp consent is asked once and stays on the client file", async ({

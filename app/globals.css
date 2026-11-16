@@ -2117,6 +2117,36 @@ details > summary {
   background: #f6faf7;
   overflow-wrap: anywhere;
 }
+.wa-recording {
+  flex-basis: 100%;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 6px 6px 6px 12px;
+  border: 1px solid #f3c4c4;
+  border-radius: 10px;
+  background: #fff6f6;
+}
+.wa-recording > span:nth-child(2) {
+  flex: 1;
+}
+.wa-rec-dot {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  background: #d92d20;
+  animation: wa-rec 1s ease-in-out infinite alternate;
+}
+@keyframes wa-rec {
+  to {
+    opacity: 0.3;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .wa-rec-dot {
+    animation: none;
+  }
+}
 .wa-clip {
   align-self: center;
 }

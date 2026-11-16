@@ -6,6 +6,7 @@ import {
   messagePayload,
   parseWebhook,
   sendFileName,
+  sendMime,
   shouldRetry,
   windowOpen,
   type OutboxRow,
@@ -930,4 +931,30 @@ test("uploads a file to WhatsApp and returns its media id", async () => {
     throw Error("offline");
   }) as typeof fetch);
   assert.equal(down.ok, false);
+});
+
+test("sends recorded voice notes as WhatsApp voice messages and audio files as audio", () => {
+  const audio = (voice: boolean | undefined) =>
+    messagePayload(
+      "59899000001",
+      row({
+        purpose: "manual",
+        kind: "audio",
+        body: "ignorado",
+        template: null,
+        media: { id: "AUDIO_1", mime_type: "audio/ogg", voice },
+      }),
+    ) as unknown as Record<string, Record<string, unknown>>;
+  assert.deepEqual(audio(true).audio, { id: "AUDIO_1", voice: true });
+  assert.deepEqual(audio(undefined).audio, { id: "AUDIO_1" });
+  const b = (...xs: number[]) => Uint8Array.from(xs);
+  assert.ok(fileMatchesType(b(0x49, 0x44, 0x33, 4), "audio/mpeg"));
+  assert.ok(fileMatchesType(b(0xff, 0xfb, 0x90), "audio/mpeg"));
+  assert.ok(fileMatchesType(b(0xff, 0xf1, 0x50), "audio/aac"));
+  assert.ok(fileMatchesType(b(0, 0, 0, 0x20, 0x66, 0x74, 0x79, 0x70), "audio/mp4"));
+  assert.equal(fileMatchesType(new TextEncoder().encode("OggS"), "audio/ogg"), false);
+  assert.equal(fileMatchesType(b(0x52, 0x49, 0x46, 0x46), "audio/mpeg"), false);
+  assert.equal(sendMime("audio/x-m4a"), "audio/mp4");
+  assert.equal(sendMime("audio/ogg; codecs=opus"), "audio/ogg");
+  assert.equal(sendMime("Audio/MP3"), "audio/mpeg");
 });

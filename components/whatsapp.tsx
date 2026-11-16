@@ -8,12 +8,15 @@ import {
   CircleAlert,
   ExternalLink,
   MessageCircle,
+  Mic,
   Paperclip,
   RefreshCw,
   Search,
   Send,
+  Trash2,
   X,
 } from "lucide-react";
+import { webmToOggOpus } from "@/lib/ogg-opus";
 import { supabase } from "@/lib/supabase";
 import { waDemoSeed } from "@/lib/demo";
 import type { Application, Profile } from "@/lib/domain";
@@ -24,6 +27,7 @@ import {
   SEND_MEDIA_ACCEPT,
   SEND_MEDIA_MAX_BYTES,
   dayLabel,
+  sendMime,
   initials,
   listTime,
   safeDriveUrl,
@@ -218,22 +222,150 @@ async function shrinkImage(file: File): Promise<File> {
 
 /** Checks a file chosen to send; returns the file to send or a message for the user. */
 async function prepareAttachment(
-  file: File,
+  chosen: File,
 ): Promise<{ file: File } | { error: string }> {
-  if (!SEND_MEDIA[file.type])
+  const mime = sendMime(chosen.type);
+  if (!SEND_MEDIA[mime])
     return {
-      error: "Solo se pueden enviar fotos (JPG o PNG), PDF y videos MP4.",
+      error:
+        "Solo se pueden enviar fotos (JPG o PNG), PDF, videos MP4 y audios (MP3, M4A, AAC u OGG).",
     };
-  const ready = SEND_MEDIA[file.type]!.kind === "image" ? await shrinkImage(file) : file;
+  // Same bytes, with the type name WhatsApp expects (e.g. audio/x-m4a → audio/mp4).
+  const file =
+    mime === chosen.type
+      ? chosen
+      : new File([chosen], chosen.name, { type: mime });
+  const ready = SEND_MEDIA[mime]!.kind === "image" ? await shrinkImage(file) : file;
   if (ready.size > SEND_MEDIA_MAX_BYTES)
     return {
       error:
-        SEND_MEDIA[file.type]!.kind === "video"
+        SEND_MEDIA[mime]!.kind === "video"
           ? "El video supera los 4 MB que se pueden enviar desde el CRM. Recortalo o envialo desde el celular de la empresa."
           : "El archivo supera los 4 MB que se pueden enviar desde el CRM.",
     };
   return { file: ready };
 }
+
+const VOICE_MAX_SECONDS = 600;
+// Opus in WebM (Chrome, Edge, recent Safari) is repackaged as Ogg; Firefox records Ogg directly.
+const RECORDER_TYPES = [
+  "audio/webm;codecs=opus",
+  "audio/ogg;codecs=opus",
+  "audio/mp4",
+];
+
+/** A finished recording → the file to send: Ogg/Opus voice note when possible. */
+async function voiceNoteFile(blob: Blob): Promise<File> {
+  const type = sendMime(blob.type);
+  if (type === "audio/webm") {
+    const ogg = webmToOggOpus(new Uint8Array(await blob.arrayBuffer()));
+    if (!ogg) throw Error("No se pudo preparar la nota de voz. Probá grabarla de nuevo.");
+    return new File([ogg], "Nota de voz.ogg", { type: "audio/ogg" });
+  }
+  if (type === "audio/ogg" || type === "audio/mp4")
+    return new File([blob], `Nota de voz.${type === "audio/ogg" ? "ogg" : "m4a"}`, {
+      type,
+    });
+  throw Error("Este navegador graba en un formato que WhatsApp no admite. Probá con Chrome.");
+}
+
+type Recording = {
+  recorder: MediaRecorder;
+  stream: MediaStream;
+  chunks: Blob[];
+  started: number;
+};
+
+/** Records a voice note with the computer's microphone. */
+function useVoiceRecorder(onRecorded: (file: File) => void, onError: (msg: string) => void) {
+  const rec = useRef<Recording | null>(null);
+  const [seconds, setSeconds] = useState<number | null>(null);
+  const finish = useCallback(
+    async (send: boolean) => {
+      const r = rec.current;
+      if (!r) return;
+      rec.current = null;
+      setSeconds(null);
+      if (r.recorder.state !== "inactive")
+        await new Promise<void>((ok) => {
+          r.recorder.onstop = () => ok();
+          r.recorder.stop();
+        });
+      r.stream.getTracks().forEach((t) => t.stop());
+      if (!send) return;
+      if (Date.now() - r.started < 1000)
+        return onError("La nota de voz es muy corta. Mantené la grabación al menos un segundo.");
+      try {
+        const file = await voiceNoteFile(
+          new Blob(r.chunks, { type: r.recorder.mimeType || r.chunks[0]?.type }),
+        );
+        if (file.size > SEND_MEDIA_MAX_BYTES)
+          return onError("La nota de voz supera los 4 MB que se pueden enviar desde el CRM.");
+        onRecorded(file);
+      } catch (e) {
+        onError(e instanceof Error ? e.message : "No se pudo preparar la nota de voz.");
+      }
+    },
+    [onRecorded, onError],
+  );
+  const active = seconds !== null;
+  useEffect(() => {
+    if (!active) return;
+    const t = setInterval(() => {
+      const r = rec.current;
+      if (!r) return;
+      const s = Math.floor((Date.now() - r.started) / 1000);
+      setSeconds(s);
+      if (s >= VOICE_MAX_SECONDS) finish(true);
+    }, 250);
+    return () => clearInterval(t);
+  }, [active, finish]);
+  // Leaving the chat while recording releases the microphone.
+  useEffect(
+    () => () => {
+      const r = rec.current;
+      rec.current = null;
+      if (r && r.recorder.state !== "inactive") r.recorder.stop();
+      r?.stream.getTracks().forEach((t) => t.stop());
+    },
+    [],
+  );
+  async function start() {
+    if (rec.current) return;
+    if (!navigator.mediaDevices?.getUserMedia || typeof MediaRecorder === "undefined")
+      return onError("Este navegador no permite grabar audio. Probá con Chrome.");
+    let stream: MediaStream;
+    try {
+      stream = await navigator.mediaDevices.getUserMedia({
+        audio: { channelCount: 1, echoCancellation: true, noiseSuppression: true },
+      });
+    } catch (e) {
+      const name = e instanceof DOMException ? e.name : "";
+      return onError(
+        name === "NotAllowedError" || name === "SecurityError"
+          ? "Permití el uso del micrófono en el navegador para grabar notas de voz."
+          : name === "NotFoundError"
+            ? "No se encontró un micrófono en este equipo."
+            : `No se pudo usar el micrófono${name ? ` (${name})` : ""}. Revisá que no lo esté usando otro programa.`,
+      );
+    }
+    const mimeType = RECORDER_TYPES.find((t) => MediaRecorder.isTypeSupported(t));
+    const recorder = new MediaRecorder(stream, {
+      ...(mimeType ? { mimeType } : {}),
+      audioBitsPerSecond: 32000,
+    });
+    const r: Recording = { recorder, stream, chunks: [], started: Date.now() };
+    recorder.ondataavailable = (e) => {
+      if (e.data.size) r.chunks.push(e.data);
+    };
+    recorder.start(1000);
+    rec.current = r;
+    setSeconds(0);
+  }
+  return { seconds, start, stop: finish };
+}
+
+const clock = (s: number) => `${Math.floor(s / 60)}:${String(s % 60).padStart(2, "0")}`;
 
 async function sendFile(
   demo: boolean,
@@ -242,7 +374,7 @@ async function sendFile(
   file: File,
   caption: string,
 ) {
-  const kind = SEND_MEDIA[file.type]?.kind ?? "document";
+  const kind = SEND_MEDIA[sendMime(file.type)]?.kind ?? "document";
   if (demo) {
     const d = demoLoad();
     const c = d.conversations.find((x) => x.application_id === app.id);
@@ -261,7 +393,12 @@ async function sendFile(
       author_id: profile.id,
       kind,
       body: caption,
-      media: { id: "demo", mime_type: file.type, filename: file.name },
+      media: {
+        id: "demo",
+        mime_type: file.type,
+        filename: file.name,
+        ...(file.type === "audio/ogg" ? { voice: true } : {}),
+      },
       status: "sent",
       error: null,
       created_at: now,
@@ -429,6 +566,30 @@ export function WhatsAppPanel({
     !!conversation?.last_inbound_at ||
     savedConsent;
 
+  const sendVoice = useCallback(
+    async (file: File) => {
+      setBusy(true);
+      setError("");
+      try {
+        await sendFile(demo, app, profile, file, "");
+        await load();
+        onChange?.();
+      } catch (e) {
+        setError(e instanceof Error ? e.message : "No se pudo enviar la nota de voz.");
+      } finally {
+        setBusy(false);
+      }
+    },
+    [demo, app, profile, load, onChange],
+  );
+  const voice = useVoiceRecorder(sendVoice, setError);
+  const recording = voice.seconds !== null;
+
+  // The recording bar or a chosen file takes room: keep the latest messages in view.
+  useEffect(() => {
+    endRef.current?.scrollIntoView?.({ block: "end" });
+  }, [recording, attachment]);
+
   async function attach(file: File | undefined) {
     if (fileRef.current) fileRef.current.value = "";
     if (!file) return;
@@ -445,12 +606,16 @@ export function WhatsAppPanel({
     setError("");
     try {
       if (action === "text" && attachment) {
-        if (text.trim().length > CAPTION_MAX)
+        const audio = SEND_MEDIA[attachment.type]?.kind === "audio";
+        if (!audio && text.trim().length > CAPTION_MAX)
           throw Error(
             `El texto que acompaña el archivo admite hasta ${CAPTION_MAX} caracteres. Envialo como mensaje aparte.`,
           );
-        await sendFile(demo, app, profile, attachment, text.trim());
+        await sendFile(demo, app, profile, attachment, audio ? "" : text.trim());
         setAttachment(null);
+        // WhatsApp audio carries no text: the text goes right after, as its own message.
+        if (audio && text.trim())
+          await sendMessage(demo, app, profile, "text", text.trim(), false);
       } else
         await sendMessage(demo, app, profile, action, text.trim(), consent);
       if (action === "text") setText("");
@@ -572,6 +737,33 @@ export function WhatsAppPanel({
             if (!busy && (text.trim() || attachment)) send("text");
           }}
         >
+          {recording && (
+            <div
+              className="wa-recording"
+              role="status"
+              aria-label="Grabación de nota de voz"
+            >
+              <span className="wa-rec-dot" aria-hidden="true" />
+              <span>
+                Grabando nota de voz <b>{clock(voice.seconds ?? 0)}</b>
+              </span>
+              <button
+                type="button"
+                className="icon-button"
+                aria-label="Cancelar nota de voz"
+                onClick={() => voice.stop(false)}
+              >
+                <Trash2 size={16} />
+              </button>
+              <button
+                type="button"
+                className="primary"
+                onClick={() => voice.stop(true)}
+              >
+                <Send size={16} /> Enviar nota de voz
+              </button>
+            </div>
+          )}
           {attachment && (
             <div className="wa-attachment">
               <span>
@@ -579,7 +771,9 @@ export function WhatsAppPanel({
                   ? "🖼️"
                   : SEND_MEDIA[attachment.type]?.kind === "video"
                     ? "🎬"
-                    : "📎"}{" "}
+                    : SEND_MEDIA[attachment.type]?.kind === "audio"
+                      ? "🎵"
+                      : "📎"}{" "}
                 {attachment.name}{" "}
                 <small className="muted">{fileSize(attachment.size)}</small>
               </span>
@@ -604,21 +798,34 @@ export function WhatsAppPanel({
           <button
             type="button"
             className="icon-button wa-clip"
-            aria-label="Adjuntar foto, PDF o video"
-            title="Adjuntar foto, PDF o video (hasta 4 MB)"
-            disabled={busy || !valid}
+            aria-label="Adjuntar foto, PDF, video o audio"
+            title="Adjuntar foto, PDF, video o audio (hasta 4 MB)"
+            disabled={busy || !valid || recording}
             onClick={() => fileRef.current?.click()}
           >
             <Paperclip size={18} />
+          </button>
+          <button
+            type="button"
+            className="icon-button wa-clip"
+            aria-label="Grabar nota de voz"
+            title="Grabar nota de voz"
+            disabled={busy || !valid || recording || !!attachment}
+            onClick={() => voice.start()}
+          >
+            <Mic size={18} />
           </button>
           <textarea
             aria-label="Mensaje de WhatsApp"
             value={text}
             maxLength={4096}
             rows={2}
+            disabled={recording}
             placeholder={
               attachment
-                ? "Agregá un texto (opcional)…"
+                ? SEND_MEDIA[attachment.type]?.kind === "audio"
+                  ? "Texto (opcional, se envía aparte del audio)…"
+                  : "Agregá un texto (opcional)…"
                 : "Escribí tu respuesta…"
             }
             onChange={(e) => setText(e.target.value)}
@@ -631,7 +838,7 @@ export function WhatsAppPanel({
           />
           <button
             className="primary"
-            disabled={busy || (!text.trim() && !attachment) || !valid}
+            disabled={busy || recording || (!text.trim() && !attachment) || !valid}
           >
             <Send size={16} /> {busy && attachment ? "Enviando…" : "Enviar"}
           </button>
@@ -1008,7 +1215,9 @@ function mediaText(m: WaMessage) {
   const name = m.media?.filename;
   switch (m.kind) {
     case "audio":
-      return "🎤 Nota de voz";
+      return m.direction === "out" && !m.media?.voice
+        ? `🎵 ${name || "Audio"}`
+        : "🎤 Nota de voz";
     case "video":
       return `🎬 Video${m.body ? `: ${m.body}` : ""}`;
     case "sticker":
