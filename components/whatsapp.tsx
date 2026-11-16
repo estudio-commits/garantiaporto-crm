@@ -281,9 +281,15 @@ export function WhatsAppPanel({
   const closes = windowClosesAt(conversation?.last_inbound_at);
   // Demo phones are fictitious placeholders; real mode requires a WhatsApp-capable number.
   const valid = demo || !!whatsappNumber(app.phone);
-  const greeted = messages.some(
-    (m) => m.direction === "out" && m.kind === "template",
-  );
+  // Anyone who already talked with us (wrote to the number, or got a template) gets the
+  // "reopen" template; the initial greeting is only for clients we never contacted.
+  const greeted =
+    !!conversation?.last_inbound_at ||
+    messages.some(
+      (m) =>
+        m.direction === "in" ||
+        (m.direction === "out" && m.kind === "template"),
+    );
   const hasConsent =
     !!app.wa_consent ||
     !!String(app.attribution?.consent_evidence ?? "").trim() ||
