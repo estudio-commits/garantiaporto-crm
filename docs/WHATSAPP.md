@@ -159,6 +159,14 @@ Lo que se escriba en el cuadro de texto va como descripción del archivo (hasta 
 - El archivo pasa por el servidor del CRM solo en tránsito y se sube a WhatsApp; el CRM guarda el identificador de WhatsApp para poder verlo después desde el chat (**Ver archivo**), mientras WhatsApp lo conserve. Lo que envía el equipo **no** se guarda en Drive.
 Requiere la migración 022 (y la 023 para los audios).
 
+### Marcar como no leído
+
+En la bandeja de WhatsApp, con un chat abierto, el botón **No leído** (arriba, junto a **Ver ficha**) lo vuelve a marcar como no leído y lo cierra: queda con el globo verde, primero en la lista y en el filtro **No leídos**. La marca es compartida por todo el equipo, igual que la de leído. Requiere la migración 024.
+
+### Mensajes que WhatsApp no le pasa al CRM
+
+Algunos mensajes no llegan a la API de WhatsApp: fotos o videos «ver una vez», encuestas, eventos, mensajes editados o eliminados, entre otros. En el chat aparecen como **⚠️ WhatsApp no le pasa este mensaje al CRM**, con el motivo que informa WhatsApp (por ejemplo, `131051 · Message type unknown`). No hay forma de recuperarlos desde el CRM: si hace falta, pedile al cliente que lo reenvíe como foto o PDF común. El asistente ya le pide que lo reenvíe.
+
 ### Notas de voz
 
 El botón del micrófono (🎤) graba una nota de voz con el micrófono de la computadora o del celular:

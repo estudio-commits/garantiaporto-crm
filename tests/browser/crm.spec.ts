@@ -747,6 +747,81 @@ test("the team records a voice note and sends an audio file in the WhatsApp chat
   ).toBeVisible();
 });
 
+test("a WhatsApp chat can be marked unread again", async ({ page }) => {
+  await page.goto("/");
+  await nav(page, "WhatsApp").click();
+  const chats = page.getByRole("region", { name: "Bandeja de WhatsApp" });
+  await chats
+    .getByRole("button", {
+      name: "Abrir conversación con Bruno Demostración (1 sin leer)",
+    })
+    .click();
+  const panel = page.getByRole("region", { name: "Conversación de WhatsApp" });
+  await expect(panel).toContainText("Perfecto, quedo atento.");
+  await expect(
+    chats.getByRole("button", {
+      name: "Abrir conversación con Bruno Demostración",
+      exact: true,
+    }),
+  ).toBeVisible();
+  await page.getByRole("button", { name: "Marcar como no leído" }).click();
+  // The chat closes so it does not mark itself read again.
+  await expect(panel).toHaveCount(0);
+  await expect(chats).toContainText("Elegí un chat para ver la conversación.");
+  await expect(
+    chats.getByRole("button", {
+      name: "Abrir conversación con Bruno Demostración (1 sin leer)",
+    }),
+  ).toBeVisible();
+  await page.waitForTimeout(11000); // one inbox refresh: still unread
+  await expect(
+    chats.getByRole("button", {
+      name: "Abrir conversación con Bruno Demostración (1 sin leer)",
+    }),
+  ).toBeVisible();
+  await chats.getByRole("button", { name: /^No leídos/ }).click();
+  await expect(chats.locator(".wa-list li button")).toHaveCount(1);
+});
+
+test("a message WhatsApp does not hand over explains what to do", async ({
+  page,
+}) => {
+  await page.goto("/");
+  await nav(page, "WhatsApp").click();
+  await page.evaluate(() => {
+    const key = "porto-demo-whatsapp-v1";
+    const d = JSON.parse(localStorage.getItem(key)!);
+    const base = d.messages.find(
+      (m: { direction: string }) => m.direction === "in",
+    );
+    d.messages.push({
+      ...base,
+      id: crypto.randomUUID(),
+      wamid: "wamid.demo-unsupported",
+      kind: "unsupported",
+      body: "Mensaje no compatible (131051 · Message type unknown).",
+      media: null,
+      created_at: new Date().toISOString(),
+    });
+    localStorage.setItem(key, JSON.stringify(d));
+  });
+  await page.reload();
+  await nav(page, "WhatsApp").click();
+  const chats = page.getByRole("region", { name: "Bandeja de WhatsApp" });
+  await expect(chats).toContainText("⚠️ Mensaje no compatible");
+  await chats
+    .locator(".wa-list li button", { hasText: "Mensaje no compatible" })
+    .click();
+  const bubble = page.getByRole("article", {
+    name: "Cliente: Mensaje no compatible",
+  });
+  await expect(bubble).toContainText(
+    "WhatsApp no le pasa este mensaje al CRM.",
+  );
+  await expect(bubble).toContainText("«ver una vez»");
+  await expect(bubble).toContainText("131051 · Message type unknown");
+});
+
 test("WhatsApp consent is asked once and stays on the client file", async ({
   page,
 }) => {

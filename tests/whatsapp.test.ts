@@ -958,3 +958,35 @@ test("sends recorded voice notes as WhatsApp voice messages and audio files as a
   assert.equal(sendMime("audio/ogg; codecs=opus"), "audio/ogg");
   assert.equal(sendMime("Audio/MP3"), "audio/mpeg");
 });
+
+test("keeps WhatsApp's reason for messages the API does not deliver", () => {
+  const unsupported = (m: Record<string, unknown>) =>
+    parseWebhook(
+      envelope({
+        metadata: { phone_number_id: "111111" },
+        messages: [{ from: "59899000001", id: "wamid.U", timestamp: "1700000000", ...m }],
+      }),
+    ).messages[0]!;
+  const viewOnce = unsupported({
+    type: "unsupported",
+    errors: [
+      {
+        code: 131051,
+        title: "Message type unknown",
+        error_data: { details: "Message type is currently not supported." },
+      },
+    ],
+  });
+  assert.equal(viewOnce.kind, "unsupported");
+  assert.equal(
+    viewOnce.body,
+    "Mensaje no compatible (131051 · Message type unknown · Message type is currently not supported.).",
+  );
+  const poll = unsupported({ type: "unsupported", unsupported: { type: "poll" } });
+  assert.equal(poll.body, "Mensaje no compatible (tipo: poll).");
+  assert.equal(unsupported({ type: "order" }).body, "Mensaje no compatible (tipo: order).");
+  assert.equal(
+    unsupported({ type: "unsupported" }).body,
+    "Mensaje de un tipo que el CRM todavía no muestra.",
+  );
+});
