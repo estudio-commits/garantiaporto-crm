@@ -8,6 +8,7 @@ import {
   CircleAlert,
   ExternalLink,
   MessageCircle,
+  MessageSquareDot,
   Mic,
   Paperclip,
   RefreshCw,
@@ -26,6 +27,7 @@ import {
   SEND_MEDIA,
   SEND_MEDIA_ACCEPT,
   SEND_MEDIA_MAX_BYTES,
+  UNSUPPORTED_GENERIC,
   dayLabel,
   sendMime,
   initials,
@@ -110,6 +112,20 @@ async function markRead(demo: boolean, c: WaConversation) {
     return;
   }
   await supabase!.rpc("wa_mark_read", { p_conversation: c.id });
+}
+
+/** Marks a chat as unread for the whole team, like WhatsApp's "Marcar como no leído". */
+async function markUnread(demo: boolean, c: WaConversation) {
+  if (demo) {
+    const d = demoLoad();
+    d.conversations = d.conversations.map((x) =>
+      x.id === c.id ? { ...x, unread_count: Math.max(1, x.unread_count) } : x,
+    );
+    demoSave(d);
+    return;
+  }
+  const r = await supabase!.rpc("wa_mark_unread", { p_conversation: c.id });
+  if (r.error) throw Error("No se pudo marcar como no leído.");
 }
 
 async function sendMessage(
@@ -503,6 +519,14 @@ export function WhatsAppPanel({
     [now, setNow] = useState(Date.now());
   const endRef = useRef<HTMLDivElement>(null);
   const fileRef = useRef<HTMLInputElement>(null);
+  // A closed chat must not mark itself read late (e.g. right after "Marcar como no leído").
+  const alive = useRef(true);
+  useEffect(() => {
+    alive.current = true;
+    return () => {
+      alive.current = false;
+    };
+  }, []);
   const autoFiled = useRef(false);
   const load = useCallback(async () => {
     try {
@@ -530,7 +554,7 @@ export function WhatsAppPanel({
       setConversation(c);
       setMessages(msgs);
       setNow(Date.now());
-      if (c?.unread_count) {
+      if (c?.unread_count && alive.current) {
         await markRead(demo, c);
         onChange?.();
       }
@@ -682,14 +706,18 @@ export function WhatsAppPanel({
             )}
             <article
               className={`wa-bubble ${m.direction} ${m.status === "failed" ? "failed" : ""}`}
-              aria-label={`${authorLabel(m)}: ${m.body || (m.media ? mediaText(m) : "")}`}
+              aria-label={`${authorLabel(m)}: ${m.kind === "unsupported" ? "Mensaje no compatible" : m.body || (m.media ? mediaText(m) : "")}`}
             >
               {m.direction === "out" && (
                 <small className={`wa-author ${m.author}`}>
                   {authorLabel(m)}
                 </small>
               )}
-              <p>{m.media ? mediaText(m) : m.body}</p>
+              {m.kind === "unsupported" ? (
+                <Unsupported message={m} />
+              ) : (
+                <p>{m.media ? mediaText(m) : m.body}</p>
+              )}
               {m.media_status && (
                 <MediaState message={m} demo={demo} retried={load} />
               )}
@@ -1099,7 +1127,7 @@ export function WhatsAppInbox({
                       <span className="wa-preview">
                         {m?.direction === "out" && <Ticks status={m.status} />}
                         {m
-                          ? `${m.direction === "out" ? (m.author === "bot" ? "Asistente: " : m.author === "system" ? "" : "Vos: ") : ""}${m.body || mediaText(m)}`
+                          ? `${m.direction === "out" ? (m.author === "bot" ? "Asistente: " : m.author === "system" ? "" : "Vos: ") : ""}${m.kind === "unsupported" ? "⚠️ Mensaje no compatible" : m.body || mediaText(m)}`
                           : "Sin mensajes"}
                       </span>
                       {c.needs_human && (
@@ -1144,6 +1172,35 @@ export function WhatsAppInbox({
                     : ""}
                 </small>
               </div>
+              {current && (
+                <button
+                  className="secondary"
+                  aria-label="Marcar como no leído"
+                  title="Marcar como no leído"
+                  onClick={async () => {
+                    // Close the chat first: an open chat marks itself read.
+                    setSelected(null);
+                    try {
+                      await markUnread(demo, current);
+                      setConvs((l) =>
+                        l.map((x) =>
+                          x.id === current.id
+                            ? { ...x, unread_count: Math.max(1, x.unread_count) }
+                            : x,
+                        ),
+                      );
+                      await load();
+                    } catch (e) {
+                      setError(
+                        e instanceof Error ? e.message : "No se pudo marcar como no leído.",
+                      );
+                    }
+                  }}
+                >
+                  <MessageSquareDot size={14} />
+                  <span className="wa-hide-sm">No leído</span>
+                </button>
+              )}
               <button
                 className="secondary"
                 aria-label="Ver ficha"
@@ -1208,6 +1265,23 @@ async function openMedia(messageId: string) {
   if (tab) tab.location.href = url;
   else window.location.href = url;
   setTimeout(() => URL.revokeObjectURL(url), 60000);
+}
+
+/** Something WhatsApp did not hand over to the CRM, with what to do about it. */
+function Unsupported({ message: m }: { message: WaMessage }) {
+  return (
+    <>
+      <p>⚠️ WhatsApp no le pasa este mensaje al CRM.</p>
+      <small className="wa-unsupported">
+        Suele ser una foto o video «ver una vez», una encuesta, un evento, o un
+        mensaje editado o eliminado. Si hace falta, pedile al cliente que lo
+        reenvíe como foto o PDF común.
+        {m.body && m.body !== UNSUPPORTED_GENERIC && (
+          <span className="wa-detail">{m.body}</span>
+        )}
+      </small>
+    </>
+  );
 }
 
 /** A file in the chat, by kind: WhatsApp voice notes and videos carry no file name. */

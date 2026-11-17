@@ -2117,6 +2117,17 @@ details > summary {
   background: #f6faf7;
   overflow-wrap: anywhere;
 }
+.wa-unsupported {
+  display: block;
+  color: var(--muted, #5b6472);
+  max-width: 420px;
+}
+.wa-unsupported .wa-detail {
+  display: block;
+  margin-top: 4px;
+  font-size: 0.85em;
+  overflow-wrap: anywhere;
+}
 .wa-recording {
   flex-basis: 100%;
   display: flex;

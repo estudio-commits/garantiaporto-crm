@@ -94,6 +94,9 @@ do $$declare c uuid; begin
  select id into c from wa_conversations;
  perform wa_mark_read(c);
  if (select unread_count from wa_conversations where id=c)<>0 then raise exception 'Mark read failed';end if;
+ perform wa_mark_unread(c);
+ if (select unread_count from wa_conversations where id=c)<>1 then raise exception 'Mark unread failed';end if;
+ perform wa_mark_read(c);
  begin insert into wa_messages(conversation_id,direction,author,kind,status) values(c,'out','human','text','sent');raise exception 'Seller forged message';exception when insufficient_privilege then null;end;
  begin update wa_conversations set bot_paused=true where id=c;raise exception 'Seller updated conversation';exception when insufficient_privilege then null;end;
  begin perform wa_record_inbound('{"wamid":"wamid.X","from":"59899000009","kind":"text"}');raise exception 'Seller called server function';exception when insufficient_privilege then null;end;
@@ -124,6 +127,17 @@ reset role;
 do $$begin
  if (select unread_count from wa_conversations where wa_id='59899000001')<>3 then raise exception 'Other seller marked chat read';end if;
  if (select media_status from wa_messages where id=current_setting('test.doc3')::uuid) is distinct from 'failed' then raise exception 'Other seller retried upload';end if;
+ update wa_conversations set unread_count=0 where wa_id='59899000001';
+ perform set_config('test.conv1',(select id from wa_conversations where wa_id='59899000001')::text,true);
+end $$;
+-- The id is passed directly: RLS would hide it from this seller anyway, the function must check too.
+set local request.jwt.claim.sub='00000000-0000-4000-8000-0000000000a3';
+set local role authenticated;
+do $$begin perform wa_mark_unread(current_setting('test.conv1')::uuid);end $$;
+reset role;
+do $$begin
+ if (select unread_count from wa_conversations where wa_id='59899000001')<>0 then raise exception 'Other seller marked chat unread';end if;
+ update wa_conversations set unread_count=3 where wa_id='59899000001';
 end $$;
 set local request.jwt.claim.sub='00000000-0000-4000-8000-0000000000a1';
 set local role authenticated;

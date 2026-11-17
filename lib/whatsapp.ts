@@ -160,6 +160,26 @@ function describe(m: Obj, kind: string): string {
   }
 }
 
+export const UNSUPPORTED_GENERIC = "Mensaje de un tipo que el CRM todavía no muestra.";
+
+/**
+ * Messages the Cloud API does not deliver (view-once photos, polls, edited or deleted messages…)
+ * arrive as "unsupported" with an error. Keeps WhatsApp's own type and reason, for the team.
+ */
+function unsupportedBody(m: Record<string, unknown>, type: string) {
+  const err = obj(arr(m.errors)[0]);
+  const original = str(obj(m.unsupported).type, 40) || (type !== "unsupported" ? type : "");
+  const reason = [
+    err.code ? String(err.code).slice(0, 10) : "",
+    str(err.title, 120),
+    str(obj(err.error_data).details, 200),
+  ]
+    .filter(Boolean)
+    .join(" · ");
+  const detail = [original && `tipo: ${original}`, reason].filter(Boolean).join("; ");
+  return detail ? `Mensaje no compatible (${detail}).` : UNSUPPORTED_GENERIC;
+}
+
 /**
  * Extracts inbound messages and delivery receipts from a Cloud API webhook body.
  * Unknown shapes are ignored instead of throwing, so one odd entry never blocks the rest.
@@ -209,10 +229,7 @@ export function parseWebhook(
           profile_name: names.get(from) || undefined,
           timestamp: toIso(m.timestamp),
           kind,
-          body:
-            kind === "unsupported"
-              ? "Mensaje de un tipo que el CRM todavía no muestra."
-              : describe(m, kind),
+          body: kind === "unsupported" ? unsupportedBody(m, type) : describe(m, kind),
           media,
         });
       }
