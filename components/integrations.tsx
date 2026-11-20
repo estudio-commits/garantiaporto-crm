@@ -115,6 +115,258 @@ function BotTester() {
   );
 }
 
+type LessonRow = {
+  id: string;
+  kind: "pregunta" | "estilo";
+  question: string | null;
+  answer: string;
+  reason: string | null;
+  evidence: number;
+  needs_review: boolean;
+  status: "propuesta" | "aprobada" | "descartada";
+  week: string;
+  decided_at: string | null;
+};
+type LearningRun = {
+  started_at: string;
+  finished_at: string | null;
+  status: "en_curso" | "lista" | "sin_datos" | "error";
+  conversations: number;
+  proposals: number;
+  error: string | null;
+};
+
+/**
+ * Weekly learning: proposals the server drew from the week's conversations. Nothing reaches the
+ * assistant until administration approves it here (and can edit it first).
+ */
+function LearningReview() {
+  const [lessons, setLessons] = useState<LessonRow[] | null>(null),
+    [run, setRun] = useState<LearningRun | null>(null),
+    [drafts, setDrafts] = useState<
+      Record<string, { question: string; answer: string }>
+    >({}),
+    [busy, setBusy] = useState(false),
+    [message, setMessage] = useState("");
+  const load = useCallback(async () => {
+    if (!supabase) return;
+    const [l, r] = await Promise.all([
+      supabase
+        .from("wa_bot_lessons")
+        .select(
+          "id,kind,question,answer,reason,evidence,needs_review,status,week,decided_at",
+        )
+        .neq("status", "descartada")
+        .order("created_at", { ascending: false })
+        .limit(200),
+      supabase
+        .from("wa_bot_learning_runs")
+        .select("started_at,finished_at,status,conversations,proposals,error")
+        .order("started_at", { ascending: false })
+        .limit(1),
+    ]);
+    if (l.error) {
+      setMessage("Falta aplicar la migración 027 en Supabase.");
+      setLessons([]);
+      return;
+    }
+    setLessons(l.data as LessonRow[]);
+    setRun(((r.data ?? [])[0] as LearningRun | undefined) ?? null);
+  }, []);
+  useEffect(() => {
+    load();
+  }, [load]);
+  async function analyze() {
+    if (!supabase) return;
+    setBusy(true);
+    setMessage(
+      "Leyendo las conversaciones de la semana… puede tardar uno o dos minutos.",
+    );
+    try {
+      const {
+        data: { session },
+      } = await supabase.auth.getSession();
+      const r = await fetch("/api/whatsapp/learn", {
+        method: "POST",
+        headers: { authorization: `Bearer ${session?.access_token}` },
+      });
+      const data = await r.json().catch(() => ({}));
+      setMessage(
+        !r.ok
+          ? data.error || `Error HTTP ${r.status}`
+          : data.status === "sin_datos"
+            ? "No hubo conversaciones para analizar en los últimos 7 días."
+            : data.status === "error"
+              ? `No se pudo completar: ${data.error}`
+              : `Listo: ${data.proposals} propuestas nuevas de ${data.conversations} conversaciones.`,
+      );
+    } catch {
+      setMessage("No se pudo conectar.");
+    }
+    await load();
+    setBusy(false);
+  }
+  async function decide(l: LessonRow, status: LessonRow["status"]) {
+    if (!supabase) return;
+    const d = drafts[l.id];
+    const question =
+      l.kind === "pregunta" ? (d?.question ?? l.question ?? "").trim() : null;
+    const answer = (d?.answer ?? l.answer).trim();
+    if (
+      status === "aprobada" &&
+      (!answer || (l.kind === "pregunta" && !question))
+    ) {
+      setMessage("Completá la pregunta y la respuesta antes de aprobar.");
+      return;
+    }
+    setBusy(true);
+    const r = await supabase
+      .from("wa_bot_lessons")
+      .update({ status, question, answer: answer.slice(0, 1200) })
+      .eq("id", l.id)
+      .select("id");
+    setMessage(
+      r.error || !r.data?.length
+        ? "No se pudo guardar."
+        : status === "aprobada"
+          ? "Aprobada: el asistente la usa desde su próxima respuesta."
+          : status === "descartada"
+            ? l.status === "aprobada"
+              ? "Quitada: el asistente deja de usarla."
+              : "Descartada."
+            : "",
+    );
+    await load();
+    setBusy(false);
+  }
+  const pending = (lessons ?? []).filter((l) => l.status === "propuesta");
+  const approved = (lessons ?? []).filter((l) => l.status === "aprobada");
+  const draft = (l: LessonRow) =>
+    drafts[l.id] ?? { question: l.question ?? "", answer: l.answer };
+  const setDraft = (
+    l: LessonRow,
+    v: Partial<{ question: string; answer: string }>,
+  ) => setDrafts((all) => ({ ...all, [l.id]: { ...draft(l), ...v } }));
+  return (
+    <div className="int-option" aria-label="Aprendizaje semanal">
+      <div className="int-option-head">
+        <div>
+          <strong>Aprendizaje semanal</strong>
+          <p>
+            Cada lunes se leen las conversaciones de la semana (sin nombres,
+            cédulas ni teléfonos) y se proponen preguntas frecuentes que el
+            asistente no respondía, con la respuesta que dio el equipo, y frases
+            del estilo del equipo. El asistente solo usa lo que apruebes acá.
+          </p>
+          {run && (
+            <small className="muted">
+              Último análisis:{" "}
+              {new Date(run.started_at).toLocaleString("es-UY", {
+                timeZone: "America/Montevideo",
+                dateStyle: "short",
+                timeStyle: "short",
+              })}
+              {" · "}
+              {run.status === "lista"
+                ? `${run.conversations} conversaciones, ${run.proposals} propuestas`
+                : run.status === "sin_datos"
+                  ? "sin conversaciones"
+                  : run.status === "en_curso"
+                    ? "en curso"
+                    : `error: ${run.error ?? ""}`}
+            </small>
+          )}
+        </div>
+        <button className="secondary" disabled={busy} onClick={analyze}>
+          {busy ? "Analizando…" : "Analizar ahora"}
+        </button>
+      </div>
+      {message && <p role="status">{message}</p>}
+      {lessons && pending.length === 0 && (
+        <p className="muted">No hay propuestas pendientes de revisión.</p>
+      )}
+      {pending.length > 0 && (
+        <ol className="int-lessons" aria-label="Propuestas para revisar">
+          {pending.map((l) => (
+            <li key={l.id}>
+              <small className="int-lesson-kind">
+                {l.kind === "pregunta" ? "Pregunta frecuente" : "Estilo"} · en{" "}
+                {l.evidence}{" "}
+                {l.evidence === 1 ? "conversación" : "conversaciones"}
+              </small>
+              {l.needs_review && (
+                <p className="alert">
+                  Revisá el dato antes de aprobar: {l.reason}
+                </p>
+              )}
+              {l.kind === "pregunta" && (
+                <label>
+                  Pregunta del cliente
+                  <input
+                    value={draft(l).question}
+                    maxLength={300}
+                    onChange={(e) => setDraft(l, { question: e.target.value })}
+                  />
+                </label>
+              )}
+              <label>
+                {l.kind === "pregunta"
+                  ? "Respuesta del asistente"
+                  : "Indicación de estilo"}
+                <textarea
+                  value={draft(l).answer}
+                  maxLength={1200}
+                  rows={3}
+                  onChange={(e) => setDraft(l, { answer: e.target.value })}
+                />
+              </label>
+              {!l.needs_review && l.reason && (
+                <small className="muted">Por qué: {l.reason}</small>
+              )}
+              <div className="int-lesson-actions">
+                <button
+                  className="secondary"
+                  disabled={busy}
+                  onClick={() => decide(l, "descartada")}
+                >
+                  Descartar
+                </button>
+                <button
+                  className="primary"
+                  disabled={busy}
+                  onClick={() => decide(l, "aprobada")}
+                >
+                  Aprobar
+                </button>
+              </div>
+            </li>
+          ))}
+        </ol>
+      )}
+      {approved.length > 0 && (
+        <details>
+          <summary>Aprendido y en uso ({approved.length})</summary>
+          <ul className="int-lessons">
+            {approved.map((l) => (
+              <li key={l.id}>
+                {l.question && <strong>{l.question}</strong>}
+                <p>{l.answer}</p>
+                <button
+                  className="link-button"
+                  disabled={busy}
+                  onClick={() => decide(l, "descartada")}
+                >
+                  Quitar
+                </button>
+              </li>
+            ))}
+          </ul>
+        </details>
+      )}
+    </div>
+  );
+}
+
 type TemplateResult = TemplatePreview | { error: string } | undefined;
 type Templates = {
   configured: boolean;
@@ -728,6 +980,7 @@ export default function Integrations({ demo }: { demo: boolean }) {
               </div>
             </div>
             <BotTester />
+            <LearningReview />
           </section>
 
           {(dirty || message) && (

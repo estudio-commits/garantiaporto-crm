@@ -4,6 +4,7 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { runBotTurn, type BotClient } from "./bot";
 import type { WaConfig } from "./whatsapp-server";
+import type { Lesson } from "./bot-learning";
 
 type Row = Record<string, unknown>;
 export type EvalResult = {
@@ -13,7 +14,7 @@ export type EvalResult = {
   error?: string;
 };
 
-function memoryDb(question: string, kase: Row) {
+function memoryDb(question: string, kase: Row, lessons: Lesson[] = []) {
   const replies: string[] = [];
   const actions: string[] = [];
   const messages = [
@@ -64,7 +65,10 @@ function memoryDb(question: string, kase: Row) {
       select: () => chain,
       eq: () => chain,
       order: () => chain,
-      limit: async () => ({ data: messages, error: null }),
+      limit: async () => ({
+        data: t === "wa_messages" ? messages : t === "wa_bot_lessons" ? lessons : [],
+        error: null,
+      }),
       single: async () => ({ data: data(t), error: null }),
       maybeSingle: async () => ({ data: null, error: null }),
       insert: async (r: Row) => {
@@ -91,11 +95,13 @@ function memoryDb(question: string, kase: Row) {
 export async function runEvalCase(
   client: BotClient,
   question: string,
+  /** Approved weekly-learning lessons, so the test answers like the live assistant. */
+  lessons: Lesson[] = [],
 ): Promise<EvalResult> {
   const kase = /universitari|estudiante/i.test(question)
     ? { guarantee_type: "universitaria" }
     : {};
-  const { db, replies, actions } = memoryDb(question, kase);
+  const { db, replies, actions } = memoryDb(question, kase, lessons);
   const cfg = { enabled: false } as WaConfig;
   await runBotTurn(db, cfg, "prueba", client);
   const error = actions.find((a) => a.includes("Error del asistente"));

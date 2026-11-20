@@ -15,6 +15,7 @@ import {
   normalizeScheduledFollowUp,
   validDriveFolder,
   migrateApplication,
+  whatsappContact,
 } from "../lib/workflow";
 test("follow-up uses Uruguay calendar dates and last comment, never edits", () => {
   const a = {
@@ -323,4 +324,36 @@ test("finalizing pending guarantees requires a date; resuming or deciding clears
     normalizeScheduledFollowUp(terminal, next);
     assert.equal(terminal.follow_up_date, null);
   }
+});
+
+test("a team WhatsApp message (demo) adds one note per day and moves a new case to En contacto", () => {
+  const s = seed();
+  const p = s.profiles[0]!;
+  const a = s.applications.find((x) => x.stage === "nuevo" && !x.archived)!;
+  const now = Date.parse("2026-11-20T15:00:00Z");
+  const once = whatsappContact(s, a.id, p, now);
+  const after = once.applications.find((x) => x.id === a.id)!;
+  assert.equal(after.stage, "en_contacto");
+  assert.equal(after.contact_status, "contactado");
+  assert.equal(after.guarantee_stage, a.guarantee_stage);
+  const notes = (st: typeof s) =>
+    st.notes.filter((n) => n.application_id === a.id && n.body.startsWith("WhatsApp:"));
+  assert.equal(notes(once).length, 1);
+  assert.equal(followUp(after, once.notes, now), null);
+  // Same day: no second note; an audited stage change only once.
+  const twice = whatsappContact(once, a.id, p, now + 3600000);
+  assert.equal(notes(twice).length, 1);
+  assert.ok(
+    once.audits.some(
+      (ev) =>
+        ev.application_id === a.id &&
+        (ev.changes as Record<string, { after?: unknown }>).stage?.after === "en_contacto",
+    ),
+  );
+  // Finalized cases stay finalized.
+  const fin = s.applications.find((x) => x.stage === "finalizado")!;
+  assert.equal(
+    whatsappContact(s, fin.id, p, now).applications.find((x) => x.id === fin.id)!.stage,
+    "finalizado",
+  );
 });

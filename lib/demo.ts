@@ -138,7 +138,8 @@ export function waDemoSeed(now = Date.now()): {
     wamid: `wamid.demo.${k}`,
     direction,
     author,
-    author_id: null,
+    // Team replies belong to the demo administrator, so response times have someone to count.
+    author_id: author === "human" ? adminId : null,
     kind,
     body,
     media: null,

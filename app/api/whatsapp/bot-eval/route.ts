@@ -1,6 +1,7 @@
 import Anthropic from "@anthropic-ai/sdk";
 import { z } from "zod";
 import { runEvalCase } from "@/lib/bot-eval";
+import { approvedLessons } from "@/lib/bot-learning";
 import { TEST_CASES } from "@/lib/bot-tests";
 import { readLimited, serviceClient } from "@/lib/whatsapp-server";
 
@@ -41,7 +42,11 @@ export async function POST(req: Request) {
   if (!input.success || input.data.index >= TEST_CASES.length)
     return fail("Pregunta de prueba inexistente.", 422);
   const c = TEST_CASES[input.data.index];
-  const result = await runEvalCase(new Anthropic(), c.question);
+  const result = await runEvalCase(
+    new Anthropic(),
+    c.question,
+    await approvedLessons(db),
+  );
   return Response.json(
     { ...result, expected: c.expected },
     { headers: { "cache-control": "no-store" } },

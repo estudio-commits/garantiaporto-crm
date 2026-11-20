@@ -1,7 +1,7 @@
 "use client";
 import PhoneInput, { WhatsAppLink } from "./phone-input";
 import IdentityInput from "./identity-input";
-import { useEffect, useState, useMemo, FormEvent } from "react";
+import { useEffect, useRef, useState, useMemo, FormEvent } from "react";
 import {
   LayoutDashboard,
   Columns3,
@@ -43,6 +43,7 @@ import {
   terminal,
   rejectionReasons,
   isOwner,
+  whatsappContact,
 } from "@/lib/workflow";
 import Pipeline from "./pipeline";
 import SourceManager from "./source-manager";
@@ -238,6 +239,23 @@ export default function CRM() {
     if (demo && ready)
       localStorage.setItem("porto-demo-v1", JSON.stringify(store));
   }, [store, demo, ready]);
+  // Coming back to the CRM tab after a while: reload, so alerts and stages include what changed
+  // meanwhile (WhatsApp, other team members, another tab).
+  const loadedAt = useRef(Date.now());
+  useEffect(() => {
+    if (demo) return;
+    const back = () => {
+      if (
+        document.visibilityState === "visible" &&
+        Date.now() - loadedAt.current > 3 * 60 * 1000
+      ) {
+        loadedAt.current = Date.now();
+        load().catch(() => undefined);
+      }
+    };
+    document.addEventListener("visibilitychange", back);
+    return () => document.removeEventListener("visibilitychange", back);
+  }, [demo]);
   useEffect(() => {
     setPageNumber(1);
   }, [
@@ -317,6 +335,15 @@ export default function CRM() {
     } finally {
       setBusy(false);
     }
+  }
+  // A team WhatsApp message adds the day's "comunicacion" note and moves a new case to "En contacto"
+  // in the database (migrations 016 and 025); reload so the pipeline and alerts show it right away.
+  async function whatsappSent(id: string) {
+    if (supabase) {
+      await load().catch(() => undefined);
+      return;
+    }
+    if (profile) setStore((s) => whatsappContact(s, id, profile));
   }
   async function changeGuarantee(id: string, stage: string) {
     const a = store.applications.find((a) => a.id === id);
@@ -770,6 +797,7 @@ export default function CRM() {
               guarantee={changeGuarantee}
               now={now}
               initialTab={caseTab}
+              onWhatsAppSent={whatsappSent}
             />
           ) : (
             <>
@@ -950,6 +978,7 @@ export default function CRM() {
                   onConsent={(id) =>
                     mutate("applications", { id, wa_consent: true })
                   }
+                  onSent={whatsappSent}
                   open={(id) => {
                     setCaseTab("WhatsApp");
                     setSelected(id);
@@ -962,6 +991,7 @@ export default function CRM() {
                   store={store}
                   admin={isAdmin}
                   now={now}
+                  demo={demo}
                 />
               )}
               {page === "Lista de clientes" && (
@@ -1378,6 +1408,7 @@ export default function CRM() {
             busy={busy}
             mutate={mutate}
             guarantee={changeGuarantee}
+            onWhatsAppSent={whatsappSent}
           />
         </Dialog>
       )}

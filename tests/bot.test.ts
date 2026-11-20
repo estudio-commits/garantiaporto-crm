@@ -960,3 +960,19 @@ test("owners never raise follow-up alerts", async () => {
     null,
   );
 });
+
+test("approved weekly lessons reach the assistant's instructions; without them nothing changes", async () => {
+  const { runEvalCase } = await import("../lib/bot-eval");
+  const reply = [{ stop_reason: "end_turn", content: [text("Hola, ¿en qué te ayudo?")] }];
+  const first = fakeClient(reply);
+  await runEvalCase(first.client, "¿Aceptan mascotas?", [
+    { kind: "pregunta", question: "¿Se aceptan mascotas?", answer: "La garantía no depende de tener mascotas." },
+    { kind: "estilo", question: null, answer: "Terminá con una pregunta para avanzar." },
+  ]);
+  const system = JSON.stringify((first.requests[0] as { system: unknown }).system);
+  assert.match(system, /Aprendido de conversaciones reales/);
+  assert.match(system, /La garantía no depende de tener mascotas/);
+  const plain = fakeClient(reply);
+  await runEvalCase(plain.client, "¿Aceptan mascotas?");
+  assert.doesNotMatch(JSON.stringify((plain.requests[0] as { system: unknown }).system), /Aprendido/);
+});

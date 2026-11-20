@@ -3033,3 +3033,27 @@ button.whatsapp-link {
   margin-top: 2px;
   font-size: 12px;
 }
+
+.int-lessons {
+  display: grid;
+  gap: 12px;
+  margin: 12px 0 0;
+  padding-left: 20px;
+}
+.int-lessons li {
+  display: grid;
+  gap: 6px;
+}
+.int-lessons label {
+  display: grid;
+  gap: 4px;
+}
+.int-lesson-kind {
+  font-weight: 600;
+  color: var(--muted);
+}
+.int-lesson-actions {
+  display: flex;
+  gap: 8px;
+  justify-content: flex-end;
+}

@@ -1,8 +1,21 @@
 "use client";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import type { Application, Store } from "@/lib/domain";
 import { human, states } from "@/lib/domain";
-import { groupedStats, summarize, rejectionStages } from "@/lib/analytics";
+import {
+  DEFAULT_HOURS,
+  documentsToPreapproval,
+  formatCalendarTime,
+  formatWorkTime,
+  groupedStats,
+  rejectionStages,
+  responseByUser,
+  summarize,
+  type BusinessHours,
+  type ResponseTurn,
+  type TimeStats,
+} from "@/lib/analytics";
+import { loadResponseData } from "./whatsapp";
 import { sourceName } from "@/lib/sources";
 import { rejectionReasons, uyDay } from "@/lib/workflow";
 const percent = (n: number | null) =>
@@ -12,11 +25,13 @@ export default function Statistics({
   store,
   admin,
   now,
+  demo = false,
 }: {
   applications: Application[];
   store: Store;
   admin: boolean;
   now: number;
+  demo?: boolean;
 }) {
   const [from, setFrom] = useState(""),
     [to, setTo] = useState("");
@@ -31,6 +46,48 @@ export default function Statistics({
   const summary = summarize(apps, store.notes, now);
   const dates = (s: string) =>
     (!from || uyDay(s) >= from) && (!to || uyDay(s) <= to);
+  const [response, setResponse] = useState<{
+      turns: ResponseTurn[];
+      hours: BusinessHours;
+    } | null>(null),
+    [responseState, setResponseState] = useState<
+      "loading" | "ready" | "missing"
+    >("loading");
+  // Client messages since the start of the period (or the last 12 months).
+  const since = from
+    ? `${from}T00:00:00-03:00`
+    : new Date(now - 365 * 86400000).toISOString();
+  useEffect(() => {
+    let live = true;
+    setResponseState("loading");
+    loadResponseData(demo, since)
+      .then((r) => {
+        if (!live) return;
+        setResponse(r);
+        setResponseState(r ? "ready" : "missing");
+      })
+      .catch(() => live && setResponseState("missing"));
+    return () => {
+      live = false;
+    };
+  }, [demo, since]);
+  const hours = response?.hours ?? DEFAULT_HOURS;
+  const visibleIds = new Set(applications.map((a) => a.id));
+  const replies = responseByUser(
+    response?.turns ?? [],
+    hours,
+    (t) => visibleIds.has(t.application_id) && dates(t.asked_at),
+  );
+  const preapproval = documentsToPreapproval(
+    applications,
+    store.audits,
+    hours,
+    dates,
+    now,
+  );
+  const personName = (id: string) =>
+    store.profiles.find((p) => p.id === id)?.full_name ??
+    "Usuario sin perfil visible";
   const team = store.profiles.map((p) => ({
     p,
     ...summarize(
@@ -260,6 +317,129 @@ export default function Statistics({
           cada vendedor; no es un ranking de productividad por sí sola.
         </p>
       </section>
+      <section className="card padded" aria-label="Tiempos de respuesta">
+        <h2>Tiempos de respuesta</h2>
+        <p className="muted">
+          Se mide en horario de atención ({hours.start} a {hours.end},{" "}
+          {daysText(hours.days)}; se configura en Integraciones), como un
+          cliente lo vive cuando escribe fuera de hora. El promedio corrido
+          incluye noches y fines de semana. Período: fechas de cada mensaje o
+          cambio de estado.
+        </p>
+        <h3>WhatsApp: hasta que responde una persona</h3>
+        <p className="muted">
+          Desde el primer mensaje del cliente sin responder hasta la primera
+          respuesta de alguien del equipo, que es quien la suma. Las respuestas
+          del asistente no cuentan.
+        </p>
+        {responseState === "missing" ? (
+          <p role="status">
+            Falta aplicar la migración 026 en Supabase para ver este dato.
+          </p>
+        ) : responseState === "loading" ? (
+          <p className="muted">Calculando…</p>
+        ) : (
+          <>
+            <TimeTable
+              who="Persona"
+              rows={[
+                ...replies.users
+                  .map((u) => ({ label: personName(u.author_id), ...u }))
+                  .sort((a, b) => b.count - a.count),
+                { label: "Todo el equipo", ...replies.total },
+              ]}
+              hours={hours}
+              countLabel="Respuestas"
+            />
+            <p className="muted">
+              {replies.unanswered} mensajes de clientes del período todavía sin
+              respuesta de una persona (algunos los atendió el asistente).
+            </p>
+          </>
+        )}
+        <h3>De «Recibimos documentación» a «Cargada la preaprobación»</h3>
+        <p className="muted">
+          Desde la última vez que el caso pasó a Recibimos documentación hasta
+          que se cargó la preaprobación, según el historial. Se atribuye a quien
+          cargó la preaprobación. Los casos sin ese historial no se cuentan.
+        </p>
+        <TimeTable
+          who="Cargó la preaprobación"
+          rows={[
+            ...preapproval.users
+              .map((u) => ({ label: u.actor, ...u }))
+              .sort((a, b) => b.count - a.count),
+            { label: "Todo el equipo", ...preapproval.total },
+          ]}
+          hours={hours}
+          countLabel="Casos"
+        />
+        <p>
+          Esperando preaprobación: {preapproval.waiting.count} casos con
+          documentación recibida
+          {preapproval.waiting.oldest !== null
+            ? `; el más antiguo hace ${formatWorkTime(preapproval.waiting.oldest, hours)}`
+            : ""}
+          .
+        </p>
+      </section>
+    </div>
+  );
+}
+const DAY_NAMES = [
+  "",
+  "lunes",
+  "martes",
+  "miércoles",
+  "jueves",
+  "viernes",
+  "sábado",
+  "domingo",
+];
+function daysText(days: number[]) {
+  const sorted = [...days].sort();
+  const consecutive = sorted.every(
+    (d, i) => i === 0 || d === sorted[i - 1]! + 1,
+  );
+  if (sorted.length > 2 && consecutive)
+    return `${DAY_NAMES[sorted[0]!]} a ${DAY_NAMES[sorted.at(-1)!]}`;
+  return sorted.map((d) => DAY_NAMES[d]).join(", ");
+}
+function TimeTable({
+  who,
+  rows,
+  hours,
+  countLabel,
+}: {
+  who: string;
+  rows: (TimeStats & { label: string })[];
+  hours: BusinessHours;
+  countLabel: string;
+}) {
+  return (
+    <div className="table-scroll">
+      <table>
+        <thead>
+          <tr>
+            <th>{who}</th>
+            <th>{countLabel}</th>
+            <th>Mediana</th>
+            <th>Promedio</th>
+            <th>Promedio corrido</th>
+          </tr>
+        </thead>
+        <tbody>
+          {rows.map((r) => (
+            <tr key={r.label}>
+              <td>{r.label}</td>
+              <td>{r.count}</td>
+              <td>{formatWorkTime(r.median, hours)}</td>
+              <td>{formatWorkTime(r.average, hours)}</td>
+              <td>{formatCalendarTime(r.calendarAverage)}</td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
     </div>
   );
 }

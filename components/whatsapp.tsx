@@ -18,6 +18,12 @@ import {
   X,
 } from "lucide-react";
 import { webmToOggOpus } from "@/lib/ogg-opus";
+import {
+  DEFAULT_HOURS,
+  responseTurns,
+  type BusinessHours,
+  type ResponseTurn,
+} from "@/lib/analytics";
 import { supabase } from "@/lib/supabase";
 import { waDemoSeed } from "@/lib/demo";
 import type { Application, Profile } from "@/lib/domain";
@@ -496,6 +502,7 @@ export function WhatsAppPanel({
   embedded = false,
   onChange,
   onConsent,
+  onSent,
 }: {
   app: Application;
   profile: Profile;
@@ -506,6 +513,8 @@ export function WhatsAppPanel({
   onChange?: () => void;
   /** Stores the consent ticked here on the case, so the client file reflects it. */
   onConsent?: () => void;
+  /** A team message went out: the case history, stage and alerts changed in the database. */
+  onSent?: () => void;
 }) {
   const [messages, setMessages] = useState<WaMessage[]>([]),
     [conversation, setConversation] = useState<WaConversation | null>(null),
@@ -598,13 +607,14 @@ export function WhatsAppPanel({
         await sendFile(demo, app, profile, file, "");
         await load();
         onChange?.();
+        onSent?.();
       } catch (e) {
         setError(e instanceof Error ? e.message : "No se pudo enviar la nota de voz.");
       } finally {
         setBusy(false);
       }
     },
-    [demo, app, profile, load, onChange],
+    [demo, app, profile, load, onChange, onSent],
   );
   const voice = useVoiceRecorder(sendVoice, setError);
   const recording = voice.seconds !== null;
@@ -650,6 +660,7 @@ export function WhatsAppPanel({
       setConsent(false);
       await load();
       onChange?.();
+      onSent?.();
     } catch (e) {
       setError(e instanceof Error ? e.message : "No se pudo enviar.");
     } finally {
@@ -905,6 +916,41 @@ export function WhatsAppPanel({
   );
 }
 
+/**
+ * WhatsApp data for the response-time statistics: client turns since a date and the attention hours.
+ * Null when the database does not offer it yet (migration 026 not applied).
+ */
+export async function loadResponseData(
+  demo: boolean,
+  since: string,
+): Promise<{ turns: ResponseTurn[]; hours: BusinessHours } | null> {
+  if (demo)
+    return {
+      turns: responseTurns(
+        demoLoad().messages.filter((m) => m.created_at >= since),
+      ),
+      hours: DEFAULT_HOURS,
+    };
+  const [turns, hours] = await Promise.all([
+    supabase!.rpc("wa_response_turns", { p_since: since }),
+    supabase!.rpc("wa_business_hours"),
+  ]);
+  if (turns.error) return null;
+  const h = (hours.data as
+    | { hours_start: string; hours_end: string; business_days: number[] }[]
+    | null)?.[0];
+  return {
+    turns: (turns.data ?? []) as ResponseTurn[],
+    hours: h
+      ? {
+          start: h.hours_start.slice(0, 5),
+          end: h.hours_end.slice(0, 5),
+          days: h.business_days,
+        }
+      : DEFAULT_HOURS,
+  };
+}
+
 /** Polls the visible conversations; drives the menu badge, tab title and optional notifications. */
 export function useWhatsAppUnread(demo: boolean, active: boolean) {
   const [unread, setUnread] = useState(0);
@@ -955,6 +1001,7 @@ export function WhatsAppInbox({
   demo,
   open,
   onConsent,
+  onSent,
 }: {
   applications: Application[];
   profile: Profile;
@@ -962,6 +1009,8 @@ export function WhatsAppInbox({
   /** Opens the client's full case file. */
   open: (applicationId: string) => void;
   onConsent?: (applicationId: string) => void;
+  /** A team message went out from this case's chat. */
+  onSent?: (applicationId: string) => void;
 }) {
   const [convs, setConvs] = useState<WaConversation[]>([]),
     [last, setLast] = useState<Map<string, WaMessage>>(new Map()),
@@ -1218,6 +1267,7 @@ export function WhatsAppInbox({
               embedded
               onChange={load}
               onConsent={() => onConsent?.(app.id)}
+              onSent={() => onSent?.(app.id)}
             />
           </>
         ) : (

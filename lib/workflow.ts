@@ -288,3 +288,54 @@ export function demoMutation(
     audits: aid ? [audit, ...s.audits] : s.audits,
   } as Store;
 }
+
+export const WHATSAPP_NOTE =
+  "WhatsApp: conversación con el cliente desde el CRM. Los mensajes están en la pestaña WhatsApp.";
+
+/**
+ * Demo version of what the database does when a team member writes by WhatsApp (migrations 016 and
+ * 025): one "comunicacion" note per Uruguay day, and the case moves to "En contacto".
+ */
+export function whatsappContact(s: Store, id: string, p: Profile, now = Date.now()) {
+  const a = s.applications.find((x) => x.id === id);
+  if (!a) return s;
+  let next = s;
+  if (
+    !s.notes.some(
+      (n) =>
+        n.application_id === id &&
+        n.kind === "comunicacion" &&
+        n.body.startsWith("WhatsApp:") &&
+        uyDay(n.created_at) === uyDay(now),
+    )
+  )
+    next = demoMutation(
+      next,
+      "notes",
+      {
+        id: crypto.randomUUID(),
+        application_id: id,
+        author_id: p.id,
+        body: WHATSAPP_NOTE,
+        kind: "comunicacion",
+        created_at: new Date(now).toISOString(),
+      },
+      "insert",
+      "id",
+      p,
+    );
+  if (!a.archived && (a.contact_status === "no_contactado" || a.stage === "nuevo"))
+    next = demoMutation(
+      next,
+      "applications",
+      {
+        id,
+        contact_status: "contactado",
+        stage: a.stage === "nuevo" ? "en_contacto" : a.stage,
+      },
+      "update",
+      "id",
+      p,
+    );
+  return next;
+}
