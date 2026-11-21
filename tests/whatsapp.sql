@@ -307,5 +307,114 @@ do $$declare aid uuid; o wa_outbox; m wa_messages; begin
  if m.kind<>'audio' or m.body<>'' or (m.media->>'voice')::boolean is not true or m.author<>'human' then raise exception 'Voice note not recorded: %',row_to_json(m);end if;
  if m.media_status is not null then raise exception 'Team voice note queued for Drive';end if;
 end $$;
+-- Migration 025: a team member's WhatsApp message moves the case to "En contacto", audited as that person.
+do $$declare aid uuid; arch uuid; fin uuid; c uuid; begin
+ perform set_config('request.jwt.claim.sub','',true); -- as the webhook/worker: no signed-in user
+ insert into applications(full_name,phone,national_id) values('Contacto Nuevo','099 000 064','6789012-3') returning id into aid;
+ insert into applications(full_name,phone,national_id,archived) values('Contacto Archivado','099 000 065','7890123-4',true) returning id into arch;
+ insert into applications(full_name,phone,national_id,stage,follow_up_date) values('Contacto Finalizado','099 000 066','8901234-5','finalizado',(now() at time zone 'America/Montevideo')::date+7) returning id into fin;
+ perform wa_record_inbound('{"wamid":"wamid.C025","from":"59899000064","kind":"text","body":"Hola"}');
+ select id into c from wa_conversations where wa_id='59899000064';
+ insert into wa_messages(conversation_id,application_id,direction,author,author_id,kind,body,status) values
+  (c,aid,'out','bot',null,'text','Respuesta del asistente','sent'),
+  (c,aid,'out','human','00000000-0000-4000-8000-0000000000a1','text','Envío fallido','failed');
+ if (select stage from applications where id=aid)<>'nuevo' then raise exception 'Bot or failed message moved the case';end if;
+ insert into wa_messages(conversation_id,application_id,direction,author,author_id,kind,body,status)
+  values(c,aid,'out','human','00000000-0000-4000-8000-0000000000a1','text','Hola, te escribo del equipo','sent');
+ if (select stage||'/'||contact_status from applications where id=aid)<>'en_contacto/contactado' then raise exception 'Team message did not mark contact: %',(select stage||'/'||contact_status from applications where id=aid);end if;
+ if (select first_contact_by from applications where id=aid) is distinct from '00000000-0000-4000-8000-0000000000a1'::uuid then raise exception 'First contact not attributed';end if;
+ if not exists(select 1 from audit_log where application_id=aid and changes->'stage'->>'after'='en_contacto' and actor_name='Admin WA ficticio') then raise exception 'Stage change not audited as the team member';end if;
+ if coalesce(current_setting('request.jwt.claim.sub',true),'')<>'' then raise exception 'Acting user leaked: %',current_setting('request.jwt.claim.sub',true);end if;
+ insert into wa_messages(conversation_id,application_id,direction,author,author_id,kind,body,status) values
+  (c,arch,'out','human','00000000-0000-4000-8000-0000000000a1','text','Archivado','sent'),
+  (c,fin,'out','human','00000000-0000-4000-8000-0000000000a1','text','Finalizado','sent');
+ if (select stage from applications where id=arch)<>'nuevo' then raise exception 'Archived case moved';end if;
+ if (select stage||'/'||contact_status from applications where id=fin)<>'finalizado/contactado' then raise exception 'Finalized case reopened: %',(select stage from applications where id=fin);end if;
+end $$;
+-- Migration 025 backfill: cases written to before the migration.
+alter table wa_messages disable trigger zz_wa_message_effects;
+do $$declare aid uuid; c uuid; begin
+ insert into applications(full_name,phone,national_id) values('Contacto Anterior','099 000 067','9012345-6') returning id into aid;
+ perform wa_record_inbound('{"wamid":"wamid.C025b","from":"59899000067","kind":"text","body":"Hola"}');
+ select id into c from wa_conversations where wa_id='59899000067';
+ insert into wa_messages(conversation_id,application_id,direction,author,author_id,kind,body,status)
+  values(c,aid,'out','human','00000000-0000-4000-8000-0000000000a2','text','Mensaje anterior','sent');
+ if (select stage from applications where id=aid)<>'nuevo' then raise exception 'Setup: trigger still active';end if;
+ perform set_config('test.backfill',aid::text,true);
+end $$;
+alter table wa_messages enable trigger zz_wa_message_effects;
+do $$declare r record; begin
+ for r in
+  select distinct on (a.id) a.id,m.author_id
+  from applications a join wa_messages m on m.application_id=a.id
+  where not a.archived and (a.contact_status='no_contactado' or a.stage='nuevo')
+    and m.direction='out' and m.author_id is not null and m.status<>'failed'
+  order by a.id,m.created_at
+ loop
+  perform wa_mark_contacted(r.id,r.author_id);
+ end loop;
+end $$;
+do $$begin
+ if (select stage||'/'||contact_status from applications where id=current_setting('test.backfill')::uuid)<>'en_contacto/contactado' then raise exception 'Backfill did not mark contact';end if;
+ if not exists(select 1 from audit_log where application_id=current_setting('test.backfill')::uuid and changes->'stage'->>'after'='en_contacto' and actor_name='Vendedor WA ficticio') then raise exception 'Backfill not attributed to the first writer';end if;
+end $$;
+-- Migration 026: response turns (same rule as responseTurns in lib/analytics.ts) and attention hours.
+do $$declare aid uuid; c uuid; t0 timestamptz='2026-11-20 13:00:00+00'; got text; begin
+ insert into applications(full_name,phone,national_id,assigned_user_id) values('Tiempos Respuesta','099 000 068','1123456-7','00000000-0000-4000-8000-0000000000a2') returning id into aid;
+ insert into wa_conversations(wa_id,application_id) values('59899000068',aid) returning id into c;
+ insert into wa_messages(conversation_id,application_id,direction,author,author_id,kind,body,status,created_at) values
+  (c,aid,'in','customer',null,'text','uno','received',t0),
+  (c,aid,'in','customer',null,'text','dos','received',t0+interval '5 min'),
+  (c,aid,'out','bot',null,'text','asistente','sent',t0+interval '6 min'),
+  (c,aid,'out','human','00000000-0000-4000-8000-0000000000a1','text','fallido','failed',t0+interval '20 min'),
+  (c,aid,'out','human','00000000-0000-4000-8000-0000000000a1','text','respuesta','sent',t0+interval '30 min'),
+  (c,aid,'out','human','00000000-0000-4000-8000-0000000000a1','text','otra','sent',t0+interval '31 min'),
+  (c,aid,'in','customer',null,'text','tres','received',t0+interval '60 min'),
+  (c,aid,'out','human','00000000-0000-4000-8000-0000000000a2','text','respuesta 2','sent',t0+interval '120 min'),
+  (c,aid,'in','customer',null,'text','cuatro','received',t0+interval '180 min');
+ select string_agg(to_char(asked_at at time zone 'UTC','HH24:MI')||'>'||coalesce(to_char(answered_at at time zone 'UTC','HH24:MI'),'-')||'>'||coalesce(right(author_id::text,2),'-'),' ' order by asked_at)
+ into got from wa_response_turns(t0-interval '1 day') where application_id=aid;
+ if got<>'13:00>13:30>a1 14:00>15:00>a2 16:00>->-' then raise exception 'Response turns: %',got;end if;
+ perform set_config('test.timescase',aid::text,true);
+end $$;
+set local request.jwt.claim.sub='00000000-0000-4000-8000-0000000000a3';
+set local role authenticated;
+do $$begin
+ if exists(select 1 from wa_response_turns('2026-11-19') where application_id=current_setting('test.timescase')::uuid) then raise exception 'Other seller sees response turns';end if;
+ if (select hours_start from wa_business_hours())<>'09:00'::time then raise exception 'Attention hours not readable';end if;
+end $$;
+set local request.jwt.claim.sub='00000000-0000-4000-8000-0000000000a2';
+do $$begin
+ if (select count(*) from wa_response_turns('2026-11-19') where application_id=current_setting('test.timescase')::uuid)<>3 then raise exception 'Assigned seller cannot see own response turns';end if;
+end $$;
+reset role;
+-- Migration 027: weekly learning proposals; only administration reads and decides them.
+do $$declare l uuid; begin
+ insert into wa_bot_lessons(kind,question,answer,reason,evidence,week) values('pregunta','¿Se aceptan mascotas?','No depende de la garantía.','Derivó 3 veces',3,'2026-11-16') returning id into l;
+ begin insert into wa_bot_lessons(kind,answer,week) values('pregunta','Sin pregunta','2026-11-16');raise exception 'Question lesson without question';exception when check_violation then null;end;
+ insert into wa_bot_learning_runs(week,status) values('2026-11-16','lista');
+ perform set_config('test.lesson',l::text,true);
+end $$;
+set local request.jwt.claim.sub='00000000-0000-4000-8000-0000000000a2';
+set local role authenticated;
+do $$begin
+ if exists(select 1 from wa_bot_lessons) or exists(select 1 from wa_bot_learning_runs) then raise exception 'Seller reads learning';end if;
+ update wa_bot_lessons set status='aprobada' where id=current_setting('test.lesson')::uuid;
+ begin insert into wa_bot_lessons(kind,question,answer,week) values('pregunta','x','y','2026-11-16');raise exception 'Seller inserted lesson';exception when insufficient_privilege then null;end;
+end $$;
+reset role;
+do $$begin if (select status from wa_bot_lessons where id=current_setting('test.lesson')::uuid)<>'propuesta' then raise exception 'Seller approved a lesson';end if;end $$;
+set local request.jwt.claim.sub='00000000-0000-4000-8000-0000000000a1';
+set local role authenticated;
+do $$begin
+ update wa_bot_lessons set status='aprobada',answer='No depende de la garantía: lo define el contrato.' where id=current_setting('test.lesson')::uuid;
+ begin update wa_bot_lessons set kind='estilo' where id=current_setting('test.lesson')::uuid;raise exception 'Admin changed lesson kind';exception when insufficient_privilege then null;end;
+ begin update wa_bot_lessons set decided_by=null where id=current_setting('test.lesson')::uuid;raise exception 'Admin forged decision author';exception when insufficient_privilege then null;end;
+ if (select count(*) from wa_bot_learning_runs)<>1 then raise exception 'Admin cannot read runs';end if;
+end $$;
+reset role;
+do $$begin
+ if (select status||'/'||decided_by::text from wa_bot_lessons where id=current_setting('test.lesson')::uuid)<>'aprobada/00000000-0000-4000-8000-0000000000a1' then raise exception 'Decision not recorded';end if;
+end $$;
 rollback;
 \echo 'WhatsApp checks passed'

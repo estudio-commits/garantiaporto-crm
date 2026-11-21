@@ -822,6 +822,82 @@ test("a message WhatsApp does not hand over explains what to do", async ({
   await expect(bubble).toContainText("131051 · Message type unknown");
 });
 
+test("a team WhatsApp message moves a new client to En contacto and counts as follow-up", async ({
+  page,
+}) => {
+  await page.goto("/");
+  await pipeline(page);
+  await expect(
+    page
+      .getByRole("region", { name: "Etapa Nuevo cliente", exact: true })
+      .getByRole("article", {
+        name: "Solicitud Bruno Demostración",
+        exact: true,
+      }),
+  ).toBeVisible();
+  await expect(
+    page
+      .getByRole("article", {
+        name: "Solicitud Bruno Demostración",
+        exact: true,
+      })
+      .getByRole("status"),
+  ).toHaveText(/Seguimiento/);
+  await nav(page, "WhatsApp").click();
+  await page
+    .getByRole("button", { name: /^Abrir conversación con Bruno Demostración/ })
+    .click();
+  const panel = page.getByRole("region", { name: "Conversación de WhatsApp" });
+  await panel.getByLabel("Mensaje de WhatsApp").fill("Hola Bruno, ¿seguimos?");
+  await panel.getByRole("button", { name: "Enviar" }).click();
+  await expect(
+    panel.getByRole("article", { name: "Equipo: Hola Bruno, ¿seguimos?" }),
+  ).toBeVisible();
+  await pipeline(page);
+  await expect(
+    page
+      .getByRole("region", { name: "Etapa En contacto", exact: true })
+      .getByRole("article", {
+        name: "Solicitud Bruno Demostración",
+        exact: true,
+      }),
+  ).toBeVisible();
+  // The day's WhatsApp note is a contact: no follow-up alert for Bruno.
+  await expect(
+    page
+      .getByRole("article", {
+        name: "Solicitud Bruno Demostración",
+        exact: true,
+      })
+      .getByRole("status"),
+  ).toHaveCount(0);
+  await page
+    .getByRole("article", { name: "Solicitud Bruno Demostración", exact: true })
+    .click();
+  await page.getByRole("button", { name: "Historial y seguimientos" }).click();
+  await expect(
+    page
+      .getByText("WhatsApp: conversación con el cliente desde el CRM.")
+      .first(),
+  ).toBeVisible();
+});
+
+test("statistics show WhatsApp response time per person and time to preapproval", async ({
+  page,
+}) => {
+  await page.goto("/");
+  await nav(page, "Estadísticas").click();
+  const times = page.getByRole("region", { name: "Tiempos de respuesta" });
+  await expect(times).toContainText("WhatsApp: hasta que responde una persona");
+  const row = times.getByRole("row", { name: /Administración Demo/ }).first();
+  await expect(row.getByRole("cell").nth(1)).toHaveText("1");
+  await expect(times).toContainText("Todo el equipo");
+  await expect(times).toContainText(
+    "De «Recibimos documentación» a «Cargada la preaprobación»",
+  );
+  await expect(times).toContainText("Esperando preaprobación:");
+});
+
 test("WhatsApp consent is asked once and stays on the client file", async ({
   page,
 }) => {

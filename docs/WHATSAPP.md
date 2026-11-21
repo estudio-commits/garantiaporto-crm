@@ -163,9 +163,28 @@ Requiere la migración 022 (y la 023 para los audios).
 
 En la bandeja de WhatsApp, con un chat abierto, el botón **No leído** (arriba, junto a **Ver ficha**) lo vuelve a marcar como no leído y lo cierra: queda con el globo verde, primero en la lista y en el filtro **No leídos**. La marca es compartida por todo el equipo, igual que la de leído. Requiere la migración 024.
 
+### Contacto y seguimiento
+
+Cuando alguien del equipo le escribe al cliente desde el CRM (texto, archivo, nota de voz o plantilla):
+
+- el historial suma una entrada «WhatsApp: conversación con el cliente…» por día, que cuenta como seguimiento para las alertas;
+- si el caso estaba en **Nuevo cliente**, pasa a **En contacto** en el pipeline comercial y queda como contactado. El cambio queda en el historial a nombre de esa persona (migración 025). El proceso de la garantía no cambia solo.
+
+Las respuestas del asistente y el saludo automático no cuentan como contacto del equipo. La migración 025 también actualiza los casos a los que el equipo ya les había escrito.
+
 ### Mensajes que WhatsApp no le pasa al CRM
 
 Algunos mensajes no llegan a la API de WhatsApp: fotos o videos «ver una vez», encuestas, eventos, mensajes editados o eliminados, entre otros. En el chat aparecen como **⚠️ WhatsApp no le pasa este mensaje al CRM**, con el motivo que informa WhatsApp (por ejemplo, `131051 · Message type unknown`). No hay forma de recuperarlos desde el CRM: si hace falta, pedile al cliente que lo reenvíe como foto o PDF común. El asistente ya le pide que lo reenvíe.
+
+### Aprendizaje semanal del asistente
+
+Cada lunes a las 10:41 (hora de Uruguay) el servidor lee las conversaciones de los últimos 7 días y propone mejoras para el asistente. También se puede pedir con **Analizar ahora**, en Integraciones → Asistente con IA → Aprendizaje semanal.
+
+- **Qué propone:** preguntas frecuentes que el asistente no respondía, con la respuesta que dio el equipo; y notas de estilo tomadas de cómo escribe el equipo (lenguaje natural y comercial).
+- **Privacidad:** antes de enviarlas al modelo se ocultan nombres, cédulas, teléfonos, correos y enlaces. Las propuestas no incluyen datos de personas.
+- **Nada se aplica solo:** cada propuesta se puede editar y después **Aprobar** o **Descartar**. Lo aprobado entra en las instrucciones del asistente desde su próxima respuesta (y en «Probar asistente»). En «Aprendido y en uso» se puede quitar. Así, lo que escribe un cliente nunca cambia por sí solo lo que dice el asistente.
+- Si el equipo respondió algo distinto de la base de conocimiento, la propuesta lo marca para revisar.
+- Requiere la migración 027 y `ANTHROPIC_API_KEY`. Cuesta centavos de dólar por análisis.
 
 ### Notas de voz
 

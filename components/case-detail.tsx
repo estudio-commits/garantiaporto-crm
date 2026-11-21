@@ -44,6 +44,7 @@ export default function CaseDetail({
   compact = false,
   now,
   initialTab,
+  onWhatsAppSent,
 }: {
   app: Application;
   store: Store;
@@ -55,6 +56,8 @@ export default function CaseDetail({
   compact?: boolean;
   now: number;
   initialTab?: string;
+  /** Refreshes the case after a WhatsApp message from the team (history, stage, alerts). */
+  onWhatsAppSent?: (id: string) => void;
 }) {
   const [tab, setTab] = useState(initialTab ?? "Ficha"),
     [gtype, setGtype] = useState(a.guarantee_type),
@@ -655,6 +658,7 @@ export default function CaseDetail({
           onConsent={() =>
             mutate("applications", { id: a.id, wa_consent: true })
           }
+          onSent={() => onWhatsAppSent?.(a.id)}
         />
       ) : (
         <section className="card padded">

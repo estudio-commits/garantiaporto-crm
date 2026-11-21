@@ -21,6 +21,7 @@ import {
   type GuaranteeType,
 } from "./bot-knowledge";
 import { processOutbox, type WaConfig } from "./whatsapp-server";
+import { approvedLessons, lessonsPrompt } from "./bot-learning";
 
 export const BOT_MODEL = process.env.ANTHROPIC_MODEL || "claude-opus-5-5";
 const MAX_BOT_TURNS = 40;
@@ -538,7 +539,10 @@ export async function runBotTurn(
         ),
       },
     ];
-    const system = systemPrompt(settings.handoff_name, days, from, to);
+    // Lessons approved by administration (weekly learning) extend the knowledge base.
+    const system =
+      systemPrompt(settings.handoff_name, days, from, to) +
+      lessonsPrompt(await approvedLessons(db));
     if (!skipModel) turn = true;
     for (
       let round = 0;
