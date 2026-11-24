@@ -1,6 +1,7 @@
 {
   "crons": [
     { "path": "/api/whatsapp/worker", "schedule": "17 11 * * *" },
-    { "path": "/api/whatsapp/learn", "schedule": "41 13 * * 1" }
+    { "path": "/api/whatsapp/learn", "schedule": "41 13 * * 1" },
+    { "path": "/api/keepalive", "schedule": "37 2 * * *" }
   ]
 }
