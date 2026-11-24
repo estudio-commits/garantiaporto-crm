@@ -84,3 +84,13 @@ Desde el día indicado, el cliente sube al principio de su columna en ambos pipe
 ## Integración Supabase ↔ GitHub
 
 La integración de Supabase con GitHub aplica automáticamente las migraciones de `supabase/migrations` que no figuren en `supabase_migrations.schema_migrations`. Las migraciones 001 a 010 se aplicaron manualmente (las siguientes, desde 011, las aplica la integración al aprobar el PR) desde el SQL Editor y luego se registraron en esa tabla (con RLS habilitado), para que la integración no intente recrearlas. Toda migración nueva debe agregarse como archivo numerado siguiente (`011_…sql`) y no ejecutarse a mano, o bien registrarse en esa tabla si se aplica manualmente.
+
+## Base de datos siempre activa (ping diario)
+
+Supabase pausa los proyectos del plan gratuito después de 7 días sin actividad. Para que eso no pase aunque nadie use el CRM:
+
+- Vercel llama todos los días a `GET /api/keepalive` (a las 23:37 de Uruguay; `vercel.json`). La ruta hace una consulta mínima a la base (cuenta los perfiles, sin traer datos) y devuelve `{ ok, at, ms }`.
+- Está protegida con `CRON_SECRET`, la misma variable de las otras tareas programadas. Sin esa variable en Vercel, la tarea no corre.
+- Es independiente de WhatsApp y Drive: funciona aunque estén desactivados.
+- Para controlarlo: Vercel → proyecto → Settings → **Cron Jobs** (ahí se ve cada tarea y se puede ejecutar a mano con **Run**) y la pestaña **Logs**. Si la consulta falla, la respuesta es un error 502 y queda registrado como `[keepalive]`.
+- Si el proyecto ya estuviera pausado, se reactiva desde el panel de Supabase con **Restore project**; el ping no puede despertarlo.

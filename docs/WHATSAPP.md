@@ -45,6 +45,7 @@ flowchart LR
 | `POST /api/whatsapp/webhook` | Mensajes y estados. Verifica la firma `X-Hub-Signature-256` con el app secret y no procesa dos veces un mismo mensaje |
 | `POST /api/whatsapp/send`    | Envíos manuales desde el CRM, con la sesión del usuario                                                               |
 | `GET /api/whatsapp/worker`   | Cron: envía lo pendiente y reintenta (protegido con `CRON_SECRET`)                                                    |
+| `GET /api/keepalive`         | Cron diario: consulta mínima para que Supabase no pause la base por inactividad (`CRON_SECRET`)                       |
 
 **Envíos inmediatos.** Los mensajes salen en el momento:
 
