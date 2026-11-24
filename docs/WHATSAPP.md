@@ -227,18 +227,21 @@ El conocimiento del asistente está en **`docs/WHATSAPP-FAQ.md`** (aprobado el 1
 - **Cuándo responde:**
   - en los **casos web**, apenas el cliente toca "Sí, envíame la lista" en el saludo;
   - en las **consultas directas** por WhatsApp, desde el primer mensaje.
+- **Pausa antes de responder:** espera entre 10 y 15 segundos, como una persona que lee. Si en ese lapso el cliente sigue escribiendo, responde una sola vez a todo junto.
+- **Un solo mensaje por respuesta:** solo envía su texto final, sin "ya lo reviso". Si corresponden listas de documentos (por ejemplo, titular empleado y pareja independiente), van todas en ese mismo mensaje, con una sola indicación de cómo enviarlas. Antes de responder de nuevo, se asegura de que su respuesta anterior ya salió.
 - **Pasos fijos, sin IA** (los arma el CRM con los textos aprobados):
   - **Caso web:** confirma cédula, ingresos líquidos y alquiler que vinieron del formulario; en universitaria, pregunta cuántos estudiantes se presentan.
   - **Botones del sitio:** reconoce el texto exacto de cada botón y carga el tipo de garantía en la ficha.
   - **Rural:** envía el mensaje aprobado y deriva directo a Lucía.
-  - **Listas de documentos:** por forma de cobro (empleado, profesional o unipersonal, microempresa, empresa, jubilado, rentista) y la de estudiantes para universitaria.
+  - **Listas de documentos:** por forma de cobro (empleado, profesional o unipersonal, microempresa, empresa, jubilado, rentista) y la de estudiantes para universitaria. Varias formas de cobro van en un solo mensaje.
+  - **Moneda:** un alquiler de 5.000 o más se toma en pesos sin preguntar. Solo si es menor pregunta si es en pesos o en dólares.
   - **Cuentas:** ingresos mínimos en tradicional (alquiler ÷ 0,30, sumando hasta 5 personas más), topes de universitaria ($ 15.000 por estudiante, hasta 3) y costo aproximado (72% del alquiler), este último solo si el cliente lo pregunta.
   - **Orden:** la lista de documentos sale recién cuando el CRM confirmó que los ingresos alcanzan (o que el alquiler entra en el tope universitario). Si no alcanzan, el asistente ofrece sumar ingresos o que Lucía analice el caso.
-  - **Estilo:** mensajes de 20 a 30 palabras, solo sobre lo que el cliente preguntó.
+  - **Estilo:** mensajes de 20 a 30 palabras, solo sobre lo que el cliente preguntó, sin aclaraciones que no pidió (por ejemplo, no explica qué es "líquido" salvo que se lo pregunten).
   - **Marca:** el primer mensaje de cada conversación termina con "(Mensaje automático 🤖)".
 - **Datos que carga en la ficha:** nombre (consultas directas), alquiler, tipo de garantía e ingresos líquidos del titular. Solo completa datos vacíos.
 - **Cédula:** si el cliente la escribe, la registra el servidor. El modelo nunca la ve, ni siquiera en la confirmación del formulario: le llega como "[cédula]".
-- **Deriva a Lucía** en los casos de la sección 7 del documento (persona, reclamo, rural, Clearing, documentos completos, cotización exacta, siniestros y todo lo que no esté en el documento) y después de 40 respuestas automáticas. El cliente recibe el aviso aprobado, el chat queda marcado **"Requiere atención"** y el asistente se pausa.
+- **Deriva a Lucía** en los casos de la sección 7 del documento (persona, reclamo, rural, Clearing, documentos completos, cotización exacta, siniestros y todo lo que no esté en el documento) y después de 40 respuestas automáticas. El cliente recibe el aviso en las palabras del asistente, en un solo mensaje (fuera de horario se agrega el horario de atención); si el asistente no escribió nada, el aviso aprobado. El chat queda marcado **"Requiere atención"** y el asistente se pausa.
 - **Cuando alguien del equipo escribe** en un chat desde el CRM, el asistente se pausa en ese chat. Se reactiva con **Reactivar asistente** en la pestaña WhatsApp del caso.
 - **Nunca** dice si una garantía está aprobada o rechazada, ni pide contraseñas, tarjetas o códigos.
 

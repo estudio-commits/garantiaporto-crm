@@ -169,6 +169,7 @@ function fakeDb(
     messages?: Row[];
     kase?: Row;
     sensitive?: Row;
+    outbox?: Row[];
   } = {},
 ) {
   const calls: { rpc: [string, Row][]; outbox: Row[] } = {
@@ -228,7 +229,17 @@ function fakeDb(
       select: () => chain,
       eq: () => chain,
       order: () => chain,
-      limit: async () => ({ data: [...messages].reverse(), error: null }),
+      in: () => chain,
+      // Only the chat history has rows; nothing is waiting in the outbox.
+      limit: async () => ({
+        data:
+          table === "wa_messages"
+            ? [...messages].reverse()
+            : table === "wa_outbox"
+              ? (opts.outbox ?? [])
+              : [],
+        error: null,
+      }),
       single: async () => ({ data: result(), error: null }),
       maybeSingle: async () => ({
         data:
@@ -282,7 +293,7 @@ const toolUse = (name: string, input: Row, id = "tu_1") => ({
   input,
 });
 
-test("assistant sends the official document list, records the profile and replies", async () => {
+test("assistant sends one message: its text and the official document list, with one closing", async () => {
   const { db, calls } = fakeDb({
     conversation: { bot_state: { fit: "tradicional" } },
   });
@@ -290,35 +301,45 @@ test("assistant sends the official document list, records the profile and replie
     {
       stop_reason: "tool_use",
       content: [
-        text("¡Hola! Soy el asistente automático de Garantía Porto."),
+        text("Voy a buscar la lista."), // filler before a tool: never sent
         toolUse("enviar_lista_de_documentos", {
           situacion_ingresos: "empleado",
         }),
+        toolUse(
+          "enviar_lista_de_documentos",
+          { situacion_ingresos: "independiente" },
+          "tu_2",
+        ),
       ],
     },
     {
       stop_reason: "end_turn",
-      content: [text("Cuando los tengas, mandalos por acá.")],
+      content: [text("¡Perfecto! Te paso lo que se necesita para cada uno:")],
     },
   ]);
   const r = await runBotTurn(db, cfg, "conv-1", client);
-  assert.deepEqual(r, { ran: true, sent: 3, handedOff: false });
-  assert.deepEqual(
-    calls.outbox.map((o) => o.purpose),
-    ["bot", "bot", "bot"],
+  assert.deepEqual(r, { ran: true, sent: 1, handedOff: false });
+  const body = String(calls.outbox[0].body);
+  assert.match(
+    body,
+    /^¡Perfecto! Te paso lo que se necesita para cada uno:\n\n\*Documentación para empleados:\*/,
   );
   assert.match(
-    String(calls.outbox[1].body),
-    /^\*Documentación para empleados:\*/,
+    body,
+    /\*Documentación para (profesionales|independientes|trabajadores independientes)[^*]*:\*/i,
   );
-  // Only the first assistant message carries the automatic-message mark.
-  assert.match(String(calls.outbox[0].body), /\(Mensaje automático 🤖\)$/);
-  assert.doesNotMatch(String(calls.outbox[2].body), /Mensaje automático/);
+  assert.doesNotMatch(body, /Voy a buscar/);
+  // The closing line appears once, at the end, followed by the automatic-message mark.
+  assert.equal(body.match(/Podés enviarla por este mismo chat/g)?.length, 1);
+  assert.match(
+    body,
+    /Podés enviarla por este mismo chat[^\n]*\n\n\(Mensaje automático 🤖\)$/,
+  );
   const release = calls.rpc.find(([n]) => n === "wa_bot_release")!;
   assert.deepEqual(release[1].p_state, {
     fit: "tradicional",
-    income_profile: "empleado",
-    documents_sent_for: "empleado",
+    income_profile: "independiente",
+    documents_sent_for: "independiente",
   });
   const req = requests[0] as {
     model: string;
@@ -903,9 +924,10 @@ test("Probar asistente: runs a question in memory and reports replies and action
   ]);
   const r = await runEvalCase(client, "Pasame el celular de Lucía");
   assert.equal(requests.length, 1);
+  // One message: the assistant's own words; no second, fixed handoff notice.
+  assert.equal(r.replies.length, 1);
   assert.match(r.replies[0], /^Claro, te comunico con Lucía/);
   assert.match(r.replies[0], /\(Mensaje automático 🤖\)$/);
-  assert.match(r.replies[1], /^Te comunico con Lucía para que revise tu caso/);
   assert.deepEqual(r.actions, ["Deriva a Lucía: Pide hablar con una persona"]);
   assert.equal(r.error, undefined);
 });
@@ -963,16 +985,220 @@ test("owners never raise follow-up alerts", async () => {
 
 test("approved weekly lessons reach the assistant's instructions; without them nothing changes", async () => {
   const { runEvalCase } = await import("../lib/bot-eval");
-  const reply = [{ stop_reason: "end_turn", content: [text("Hola, ¿en qué te ayudo?")] }];
+  const reply = [
+    { stop_reason: "end_turn", content: [text("Hola, ¿en qué te ayudo?")] },
+  ];
   const first = fakeClient(reply);
   await runEvalCase(first.client, "¿Aceptan mascotas?", [
-    { kind: "pregunta", question: "¿Se aceptan mascotas?", answer: "La garantía no depende de tener mascotas." },
-    { kind: "estilo", question: null, answer: "Terminá con una pregunta para avanzar." },
+    {
+      kind: "pregunta",
+      question: "¿Se aceptan mascotas?",
+      answer: "La garantía no depende de tener mascotas.",
+    },
+    {
+      kind: "estilo",
+      question: null,
+      answer: "Terminá con una pregunta para avanzar.",
+    },
   ]);
-  const system = JSON.stringify((first.requests[0] as { system: unknown }).system);
+  const system = JSON.stringify(
+    (first.requests[0] as { system: unknown }).system,
+  );
   assert.match(system, /Aprendido de conversaciones reales/);
   assert.match(system, /La garantía no depende de tener mascotas/);
   const plain = fakeClient(reply);
   await runEvalCase(plain.client, "¿Aceptan mascotas?");
-  assert.doesNotMatch(JSON.stringify((plain.requests[0] as { system: unknown }).system), /Aprendido/);
+  assert.doesNotMatch(
+    JSON.stringify((plain.requests[0] as { system: unknown }).system),
+    /Aprendido/,
+  );
+});
+
+test("a handoff with the assistant's own words adds only the hours note, in the same message", async () => {
+  const { db, calls } = fakeDb({ settings: { business_days: [] } });
+  const { client } = fakeClient([
+    {
+      stop_reason: "tool_use",
+      content: [
+        text("Te paso con Lucía, que lo revisa en detalle."),
+        toolUse("derivar_a_persona", { motivo: "Caso particular" }),
+      ],
+    },
+  ]);
+  const r = await runBotTurn(db, cfg, "conv-1", client);
+  assert.equal(r.sent, 1);
+  const body = String(calls.outbox[0].body);
+  assert.match(
+    body,
+    /^Te paso con Lucía, que lo revisa en detalle\.\n\nAhora estamos fuera del horario de atención/,
+  );
+  assert.doesNotMatch(body, /canal de atención humana no está disponible/);
+});
+
+test("never says 'ya te envié la documentación' above the list itself", async () => {
+  const { finalReply } = await import("../lib/bot");
+  const out = finalReply({
+    draft: "Perfecto, ya te envié la documentación.",
+    documents: ["empleado"],
+    handoff: null,
+  });
+  assert.match(out, /^\*Documentación para empleados:\*/);
+  assert.equal(finalReply({ draft: "", documents: [], handoff: null }), "");
+});
+
+test("rents of 5.000 or more are in pesos; below that the assistant asks", async () => {
+  const { rentCurrency } = await import("../lib/bot-knowledge");
+  assert.equal(rentCurrency(22800, null), "UYU");
+  assert.equal(rentCurrency(150000, "USD"), "UYU"); // a guess of dollars is corrected
+  assert.equal(rentCurrency(1200, null), null);
+  assert.equal(rentCurrency(1200, "USD"), "USD");
+  const { db, calls } = fakeDb();
+  const { client, requests } = fakeClient([
+    {
+      stop_reason: "tool_use",
+      content: [
+        toolUse("evaluar_alquiler", {
+          modalidad: "tradicional",
+          monto_alquiler: 22800,
+          moneda: null,
+          ingresos_liquidos_totales: 90000,
+          cantidad_estudiantes: null,
+        }),
+        toolUse(
+          "estimar_costo",
+          { modalidad: "tradicional", monto_alquiler: 900, moneda: null },
+          "tu_2",
+        ),
+      ],
+    },
+    { stop_reason: "end_turn", content: [text("Con esos ingresos alcanza.")] },
+  ]);
+  await runBotTurn(db, cfg, "conv-1", client);
+  const results = (
+    requests[1] as { messages: { content: unknown }[] }
+  ).messages.at(-1)!.content as { content: string; is_error?: boolean }[];
+  assert.match(results[0]!.content, /alcanzan/);
+  assert.notEqual(results[0]!.is_error, true);
+  assert.equal(results[1]!.is_error, true);
+  assert.match(
+    results[1]!.content,
+    /preguntale al cliente si es en pesos o en dólares/,
+  );
+  assert.ok(
+    calls.rpc.some(
+      ([n, a]) =>
+        n === "wa_bot_update_case" && (a.f as Row).rent_currency === "UYU",
+    ),
+  );
+});
+
+test("does not answer again while its previous reply is still waiting to be sent", async () => {
+  const { db, calls } = fakeDb({ outbox: [{ id: "o1" }] });
+  const { client, requests } = fakeClient([]);
+  const r = await runBotTurn(db, cfg, "conv-1", client);
+  assert.equal(r.reason, "respuesta pendiente de envío");
+  assert.equal(requests.length, 0);
+  assert.equal(calls.outbox.length, 0);
+});
+
+// Wraps the fake database so the pause step sees given times for "my" message and the newest one.
+function withTimes(
+  base: { from: (t: string) => Record<string, unknown>; rpc: unknown },
+  mineAt: string,
+  newestAt: string,
+) {
+  return {
+    ...base,
+    from: (t: string) => {
+      const inner = base.from(t);
+      if (t !== "wa_messages") return inner;
+      let cols = "",
+        byId = false;
+      const chain: Record<string, unknown> = {
+        ...inner,
+        select: (c: string) => ((cols = c), chain),
+        eq: (k: string) => ((byId ||= k === "id"), chain),
+        order: () => chain,
+        maybeSingle: async () => ({
+          data: { created_at: mineAt },
+          error: null,
+        }),
+        limit: async (n: number) =>
+          cols === "created_at" && !byId
+            ? { data: [{ created_at: newestAt }], error: null }
+            : (inner.limit as (n: number) => Promise<unknown>)(n),
+      };
+      return chain;
+    },
+  };
+}
+
+test("pauses 10–15 seconds and lets a newer client message answer everything together", async () => {
+  const { botPause, runBotAfterPause } = await import("../lib/bot");
+  assert.equal(
+    botPause(() => 0),
+    10000,
+  );
+  assert.equal(
+    botPause(() => 1),
+    15000,
+  );
+  const { db } = fakeDb();
+  const slept: number[] = [];
+  const { client, requests } = fakeClient([]);
+  const r = await runBotAfterPause(
+    withTimes(
+      db as never,
+      "2026-11-24T13:00:00Z",
+      "2026-11-24T13:00:07Z",
+    ) as never,
+    cfg,
+    "conv-1",
+    "m1",
+    1_000_000 + 12000,
+    { client, sleep: async (ms) => slept.push(ms), now: () => 1_000_000 },
+  );
+  assert.deepEqual(slept, [12000]);
+  assert.equal(r.reason, "hay un mensaje más nuevo");
+  assert.equal(requests.length, 0);
+});
+
+test("messages in the same second are answered once; a running turn is waited for", async () => {
+  const { runBotAfterPause } = await import("../lib/bot");
+  const { db, calls } = fakeDb();
+  let claims = 0;
+  const base = db as unknown as {
+    from: never;
+    rpc: (n: string, a: Row) => Promise<unknown>;
+  };
+  const busyFirst = {
+    ...base,
+    rpc: async (name: string, args: Row) =>
+      name === "wa_bot_claim" && ++claims < 3
+        ? { data: false, error: null }
+        : base.rpc(name, args),
+  };
+  const slept: number[] = [];
+  const { client, requests } = fakeClient([
+    {
+      stop_reason: "end_turn",
+      content: [text("¡Hola! ¿De cuánto es el alquiler?")],
+    },
+  ]);
+  const r = await runBotAfterPause(
+    withTimes(
+      busyFirst as never,
+      "2026-11-24T13:00:00Z",
+      "2026-11-24T13:00:00Z",
+    ) as never,
+    cfg,
+    "conv-1",
+    "m1",
+    0,
+    { client, sleep: async (ms) => slept.push(ms), now: () => 0 },
+  );
+  assert.equal(r.ran, true);
+  assert.equal(requests.length, 1);
+  assert.deepEqual(slept, [0, 5000, 5000]);
+  assert.equal(calls.outbox.length, 1);
 });

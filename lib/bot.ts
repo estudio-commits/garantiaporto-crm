@@ -8,7 +8,9 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import {
   AUTO_TAG,
   DOC_PROFILES,
-  documentListMessage,
+  documentsMessage,
+  handoffHoursNote,
+  rentCurrency,
   handoffMessage,
   isGreetingButton,
   costMessage,
@@ -124,6 +126,8 @@ export function daysLabel(days: number[]) {
   return sorted.map(name).join(", ");
 }
 
+const MISSING_CURRENCY =
+  "Falta la moneda: el alquiler es menor a 5.000, así que preguntale al cliente si es en pesos o en dólares.";
 const PROFILE_KEYS = Object.keys(DOC_PROFILES) as DocProfile[];
 
 // Strict tool schemas reject `enum` next to a type list such as ["string", "null"]: an optional
@@ -162,7 +166,7 @@ export const BOT_TOOLS: Anthropic.Beta.BetaTool[] = [
         },
         moneda: nullableEnum(
           ["UYU", "USD"],
-          "UYU para pesos, USD para dólares.",
+          "UYU para pesos, USD para dólares. Null si el cliente no la dijo: el sistema la deduce del monto.",
         ),
         tipo_garantia: nullableEnum(["tradicional", "universitaria", "rural"]),
         situacion_ingresos: nullableEnum(PROFILE_KEYS),
@@ -182,7 +186,7 @@ export const BOT_TOOLS: Anthropic.Beta.BetaTool[] = [
   {
     name: "enviar_lista_de_documentos",
     description:
-      "Envía al cliente la lista oficial de documentos para una forma de cobro (o la de estudiantes para la universitaria). Usala en lugar de escribir la lista.",
+      "Agrega al final de tu mensaje la lista oficial de documentos para una forma de cobro (o la de estudiantes para la universitaria). Usala en lugar de escribir la lista; si hay varias formas de cobro, una vez por cada una: el sistema las junta en un solo mensaje.",
     strict: true,
     input_schema: {
       type: "object",
@@ -217,7 +221,10 @@ export const BOT_TOOLS: Anthropic.Beta.BetaTool[] = [
           type: "number",
           description: "Alquiler mensual que dio el cliente.",
         },
-        moneda: { type: "string", enum: ["UYU", "USD"] },
+        moneda: nullableEnum(
+          ["UYU", "USD"],
+          "La que dijo el cliente, o null si no la dijo: el sistema la deduce del monto.",
+        ),
         ingresos_liquidos_totales: {
           anyOf: [{ type: "number" }, { type: "null" }],
           description:
@@ -246,14 +253,17 @@ export const BOT_TOOLS: Anthropic.Beta.BetaTool[] = [
           enum: ["tradicional", "universitaria", "rural"],
         },
         monto_alquiler: { type: "number" },
-        moneda: { type: "string", enum: ["UYU", "USD"] },
+        moneda: nullableEnum(
+          ["UYU", "USD"],
+          "La que dijo el cliente, o null si no la dijo.",
+        ),
       },
     },
   },
   {
     name: "derivar_a_persona",
     description:
-      "Pasa la conversación a la persona del equipo. El sistema avisa al cliente con el horario de atención. Después de usarla no escribas nada más.",
+      "Pasa la conversación a la persona del equipo. En el mismo mensaje en que la usás, avisale al cliente que lo va a atender esa persona; el sistema agrega el horario si es fuera de hora. Si no escribís nada, el sistema envía un aviso de derivación. Después de usarla no escribas nada más.",
     strict: true,
     input_schema: {
       type: "object",
@@ -355,6 +365,66 @@ export function botErrorReason(e: unknown) {
   return `Error del asistente: ${e instanceof Error ? e.message.slice(0, 200) : "desconocido"}.`;
 }
 
+/**
+ * The single message the assistant sends at the end of a turn. Document lists go after the text
+ * (one closing line for all); a handoff uses the model's own words plus the hours note when out of
+ * hours, or the approved notice if the model wrote nothing.
+ */
+export function finalReply(p: {
+  draft: string;
+  documents: DocProfile[];
+  handoff: {
+    name: string;
+    inHours: boolean;
+    days: string;
+    from: string;
+    to: string;
+  } | null;
+}) {
+  let draft = p.draft.trim();
+  // "Ya te envié la documentación…" makes no sense right above the list itself.
+  if (
+    p.documents.length &&
+    /(?<![\p{L}])(ya )?te (la |las |los )?(envi[eé]|mand[eé]|pas[eé])(?![\p{L}])/iu.test(
+      draft,
+    )
+  )
+    draft = "";
+  const parts = [draft];
+  if (p.documents.length) parts.push(documentsMessage(p.documents));
+  if (p.handoff) {
+    const h = p.handoff;
+    parts.push(
+      draft
+        ? handoffHoursNote(h.name, h.inHours, h.days, h.from, h.to)
+        : handoffMessage(h.name, h.inHours, h.days, h.from, h.to),
+    );
+  }
+  return parts.filter(Boolean).join("\n\n");
+}
+
+/** True when an earlier assistant reply for this case is still waiting to be sent. */
+async function pendingBotReply(
+  db: SupabaseClient,
+  cfg: WaConfig,
+  applicationId: string,
+  fetcher: typeof fetch,
+) {
+  const pending = async () => {
+    const r = await db
+      .from("wa_outbox")
+      .select("id")
+      .eq("application_id", applicationId)
+      .eq("purpose", "bot")
+      .in("status", ["pending", "sending"])
+      .limit(1);
+    return !r.error && (r.data?.length ?? 0) > 0;
+  };
+  if (!(await pending())) return false;
+  await processOutbox(db, cfg, 10, fetcher).catch(() => undefined);
+  return pending();
+}
+
 /** Runs one assistant turn for a conversation if it is active and has an unanswered customer message. */
 export async function runBotTurn(
   db: SupabaseClient,
@@ -395,6 +465,14 @@ export async function runBotTurn(
       !c.bot_paused &&
       (!settings.bot_test_mode || settings.bot_test_numbers.includes(c.wa_id));
     if (!active) return { ran: false, sent, handedOff, reason: "inactivo" };
+    // A previous reply still waiting to go out is not in the chat yet: answering now would repeat it.
+    if (await pendingBotReply(db, cfg, c.application_id, fetcher))
+      return {
+        ran: false,
+        sent,
+        handedOff,
+        reason: "respuesta pendiente de envío",
+      };
     const { data: rows } = await db
       .from("wa_messages")
       .select("direction,author,kind,body,media,media_status,created_at")
@@ -437,6 +515,11 @@ export async function runBotTurn(
       );
       handedOff = true;
     };
+    // The model's reply is sent once, at the end of the turn: its last text, the document lists
+    // it asked for and, if it handed over, the handoff notice, all in one message.
+    let draft = "",
+      modelHandoff = false;
+    const docProfiles: DocProfile[] = [];
 
     let skipModel = false;
     if (c.bot_turns >= MAX_BOT_TURNS) {
@@ -569,9 +652,12 @@ export async function runBotTurn(
         await handoff("El asistente no pudo responder este mensaje.");
         break;
       }
-      for (const block of response.content)
-        if (block.type === "text" && block.text.trim())
-          await enqueue(block.text.trim());
+      const said = response.content
+        .filter((b): b is Anthropic.Beta.BetaTextBlock => b.type === "text")
+        .map((b) => b.text.trim())
+        .filter(Boolean)
+        .join("\n\n");
+      if (said) draft = said;
       const uses = response.content.filter(
         (b): b is Anthropic.Beta.BetaToolUseBlock => b.type === "tool_use",
       );
@@ -591,7 +677,13 @@ export async function runBotTurn(
               f: {
                 full_name: input.nombre_completo ?? null,
                 rent_amount: input.monto_alquiler ?? null,
-                rent_currency: input.moneda ?? null,
+                rent_currency:
+                  input.monto_alquiler == null
+                    ? (input.moneda ?? null)
+                    : rentCurrency(
+                        Number(input.monto_alquiler),
+                        input.moneda as "UYU" | "USD" | null,
+                      ),
                 guarantee_type: input.tipo_garantia ?? null,
                 monthly_income: input.ingresos_liquidos_titular ?? null,
                 student_count: input.cantidad_estudiantes ?? null,
@@ -620,12 +712,17 @@ export async function runBotTurn(
               throw Error(
                 "Todavía no está confirmado que aplica. Usá evaluar_alquiler con el alquiler y los ingresos (o los estudiantes); si no alcanza, no envíes documentos y ofrecé alternativas.",
               );
-            await enqueue(documentListMessage(p));
+            docProfiles.push(p);
             state = { ...state, income_profile: p, documents_sent_for: p };
-            result = "Lista enviada al cliente. No la repitas.";
+            result =
+              "Lista agregada: va al final de tu mensaje, en el mismo envío. Presentala con una frase breve; no la repitas, no digas que ya la enviaste ni cómo mandarla.";
           } else if (use.name === "evaluar_alquiler") {
             const rent = Number(input.monto_alquiler);
-            const currency = input.moneda === "USD" ? "USD" : "UYU";
+            const currency = rentCurrency(
+              rent,
+              input.moneda as "UYU" | "USD" | null,
+            );
+            if (!currency) throw Error(MISSING_CURRENCY);
             const modalidad = String(input.modalidad) as GuaranteeType;
             const fit = evaluateRent({
               modalidad,
@@ -648,16 +745,25 @@ export async function runBotTurn(
             });
           } else if (use.name === "estimar_costo") {
             const rent = Number(input.monto_alquiler);
-            const currency = input.moneda === "USD" ? "USD" : "UYU";
+            const currency = rentCurrency(
+              rent,
+              input.moneda as "UYU" | "USD" | null,
+            );
+            if (!currency) throw Error(MISSING_CURRENCY);
             result = `Para el cliente: ${costMessage(String(input.modalidad) as GuaranteeType, rent, currency)}`;
             await db.rpc("wa_bot_update_case", {
               p_application: c.application_id,
               f: { rent_amount: rent, rent_currency: currency },
             });
           } else if (use.name === "derivar_a_persona") {
-            await handoff(
-              String(input.motivo || "Derivación solicitada por el asistente"),
-            );
+            await db.rpc("wa_bot_handoff", {
+              p_conversation: c.id,
+              p_reason: String(
+                input.motivo || "Derivación solicitada por el asistente",
+              ),
+            });
+            handedOff = true;
+            modelHandoff = true;
             result = "Derivado. No escribas nada más.";
           } else throw Error("Herramienta desconocida");
         } catch (e) {
@@ -678,6 +784,20 @@ export async function runBotTurn(
       }
       messages.push({ role: "user", content: results });
     }
+    const reply = finalReply({
+      draft,
+      documents: docProfiles,
+      handoff: modelHandoff
+        ? {
+            name: settings.handoff_name,
+            inHours,
+            days,
+            from,
+            to,
+          }
+        : null,
+    });
+    if (reply) await enqueue(reply);
   } catch (e) {
     // The model or a dependency failed after retries: hand the chat to a person instead of going silent.
     const reason = botErrorReason(e);
@@ -688,12 +808,83 @@ export async function runBotTurn(
     });
     handedOff = true;
   } finally {
+    // Send before releasing the turn, so the next turn finds these replies in the chat.
+    if (sent) await processOutbox(db, cfg, 10, fetcher).catch(() => undefined);
     await db.rpc("wa_bot_release", {
       p_conversation: conversationId,
       p_state: state,
       p_turn: turn,
     });
   }
-  if (sent) await processOutbox(db, cfg, 10, fetcher).catch(() => undefined);
   return { ran: turn, sent, handedOff };
+}
+
+/** Pause before answering, like a person reading: 10 to 15 seconds. */
+export const BOT_PAUSE_MS = { min: 10000, max: 15000 };
+export const botPause = (random = Math.random) =>
+  BOT_PAUSE_MS.min +
+  Math.round(random() * (BOT_PAUSE_MS.max - BOT_PAUSE_MS.min));
+
+const wait = (ms: number) => new Promise((ok) => setTimeout(ok, ms));
+
+/**
+ * Answers a client message after the pause, once for everything the client wrote meanwhile.
+ * If a newer client message arrived during the pause, its own webhook answers (this one stops).
+ * If another turn is still running, waits for it instead of dropping the message.
+ */
+export async function runBotAfterPause(
+  db: SupabaseClient,
+  cfg: WaConfig,
+  conversationId: string,
+  messageId: string,
+  readyAt: number,
+  opts: {
+    client?: BotClient | null;
+    sleep?: (ms: number) => Promise<unknown>;
+    now?: () => number;
+    retries?: number;
+  } = {},
+): Promise<BotResult> {
+  const sleep = opts.sleep ?? wait,
+    now = opts.now ?? Date.now;
+  await sleep(Math.max(0, readyAt - now()));
+  // Same second counts as "together": only a strictly later message takes over.
+  const [mine, latest] = await Promise.all([
+    db
+      .from("wa_messages")
+      .select("created_at")
+      .eq("id", messageId)
+      .maybeSingle(),
+    db
+      .from("wa_messages")
+      .select("created_at")
+      .eq("conversation_id", conversationId)
+      .eq("direction", "in")
+      .order("created_at", { ascending: false })
+      .limit(1),
+  ]);
+  const at = (mine.data as { created_at?: string } | null)?.created_at;
+  const newest = (latest.data as { created_at: string }[] | null)?.[0]
+    ?.created_at;
+  if (at && newest && Date.parse(newest) > Date.parse(at))
+    return {
+      ran: false,
+      sent: 0,
+      handedOff: false,
+      reason: "hay un mensaje más nuevo",
+    };
+  let result: BotResult = { ran: false, sent: 0, handedOff: false };
+  for (let i = 0; i <= (opts.retries ?? 6); i++) {
+    result =
+      opts.client === undefined
+        ? await runBotTurn(db, cfg, conversationId)
+        : await runBotTurn(db, cfg, conversationId, opts.client);
+    if (
+      result.reason !== "en curso" &&
+      result.reason !== "respuesta pendiente de envío"
+    )
+      return result;
+    await sleep(5000);
+  }
+  return result;
 }
