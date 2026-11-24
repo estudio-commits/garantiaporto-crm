@@ -113,14 +113,41 @@ export const DOC_PROFILES = {
 } as const;
 export type DocProfile = keyof typeof DOC_PROFILES;
 
+const DOCS_CLOSING =
+  "Podés enviarla por este mismo chat, como foto nítida o en PDF. Cuando la envíes, Lucía revisa los archivos y continúa con la gestión.";
+
 export function documentListMessage(profile: DocProfile) {
-  const p = DOC_PROFILES[profile];
-  return [
-    `*Documentación para ${p.label}:*`,
-    ...p.docs.map((d) => `• ${d}`),
-    "",
-    "Podés enviarla por este mismo chat, como foto nítida o en PDF. Cuando la envíes, Lucía revisa los archivos y continúa con la gestión.",
-  ].join("\n");
+  return documentsMessage([profile]);
+}
+
+/**
+ * One message with the list for each way of earning income (titular and co-applicants),
+ * and the closing line once at the end.
+ */
+export function documentsMessage(profiles: DocProfile[]) {
+  const blocks = [...new Set(profiles)].map((profile) => {
+    const p = DOC_PROFILES[profile];
+    return [
+      `*Documentación para ${p.label}:*`,
+      ...p.docs.map((d) => `• ${d}`),
+    ].join("\n");
+  });
+  return [...blocks, DOCS_CLOSING].join("\n\n");
+}
+
+/**
+ * Rent currency. Rents of 5.000 or more are in pesos (a rent that high in dollars is practically
+ * nonexistent), so the client is not asked. Below that it may be dollars: use what the client said,
+ * or null to ask.
+ */
+export const PESOS_FROM = 5000;
+export function rentCurrency(
+  amount: number,
+  said: "UYU" | "USD" | null | undefined,
+): "UYU" | "USD" | null {
+  if (!Number.isFinite(amount) || amount <= 0) return said ?? null;
+  if (amount >= PESOS_FROM) return "UYU";
+  return said ?? null;
 }
 
 /** Mensajes de derivación aprobados (sección 7). */
@@ -136,6 +163,19 @@ export function handoffMessage(
   return inHours
     ? `Te comunico con ${first} para que revise tu caso y continúe la gestión por este mismo WhatsApp. Nuestro horario de atención es ${hours}`
     : `En este momento el canal de atención humana no está disponible. Nuestro horario es ${hours} Voy a dejar tu consulta para que ${first} pueda retomarla en horario de atención.`;
+}
+
+/** Out-of-hours note added to the assistant's own handoff message. Empty during attention hours. */
+export function handoffHoursNote(
+  name: string,
+  inHours: boolean,
+  days: string,
+  from: string,
+  to: string,
+) {
+  if (inHours) return "";
+  const first = name.trim().split(/\s+/)[0] || name;
+  return `Ahora estamos fuera del horario de atención (de ${days}, de ${from} a ${to} hs.): ${first} lo retoma apenas vuelva.`;
 }
 
 /** Derivación directa de la garantía rural (sección 2.2). */
@@ -326,6 +366,9 @@ La persona del equipo que atiende es ${handoffName}, de ${days}, de ${from} a ${
 - No menciones conceptos que no se hablaron en la conversación (por ejemplo "la referencia del 30%").
 - Lenguaje natural y cálido. Cuando algo no se puede, ofrecé una alternativa concreta y terminá con una pregunta.
 - Si una respuesta aprobada es larga, usá solo lo esencial para lo que preguntaron.
+- No expliques términos ni agregues aclaraciones que no te pidieron. Por ejemplo, preguntá "¿Cuánto cobrás líquido por mes?" sin explicar qué es "líquido"; explicalo solo si el cliente pregunta.
+- Moneda del alquiler: un monto de ${money(PESOS_FROM, "UYU").replace("$ ", "")} o más es en pesos: no preguntes la moneda. Solo si es menor, preguntá si es en pesos o en dólares.
+- Escribile al cliente una sola vez por turno, cuando ya tengas los resultados de las herramientas. No anuncies que vas a revisar, calcular o enviar algo: el cliente solo ve tu último texto.
 
 # Cómo trabajás
 - Respondés solo con la base de conocimiento de abajo. Si algo no está ahí, no lo deducís ni lo completás: derivás con derivar_a_persona.

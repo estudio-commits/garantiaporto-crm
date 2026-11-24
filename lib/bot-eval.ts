@@ -64,6 +64,7 @@ function memoryDb(question: string, kase: Row, lessons: Lesson[] = []) {
     const chain: Row = {
       select: () => chain,
       eq: () => chain,
+      in: () => chain,
       order: () => chain,
       limit: async () => ({
         data: t === "wa_messages" ? messages : t === "wa_bot_lessons" ? lessons : [],

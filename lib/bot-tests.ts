@@ -42,6 +42,18 @@ export const TEST_CASES: { question: string; expected: string }[] = [
     "expected": "Reconoce universitaria; informa que está dentro del tope (3 estudiantes, $45.000), solicita constancias de estudiante y datos de cada uno; no pide recibos por defecto ni promete aprobación."
   },
   {
+    "question": "El alquiler es de 22.800 y cobro 90.000",
+    "expected": "Toma el alquiler en pesos sin preguntar la moneda (5.000 o más es en pesos) e indica que los ingresos alcanzan. No explica qué son los ingresos líquidos."
+  },
+  {
+    "question": "Quiero alquilar por 1.200",
+    "expected": "Pregunta si el alquiler es en pesos o en dólares, en una frase corta."
+  },
+  {
+    "question": "Somos dos: yo soy empleada y mi pareja es independiente. Alquiler $30.000, entre los dos cobramos $120.000",
+    "expected": "Indica que alcanza y envía, en un solo mensaje, la documentación para empleados y para independientes, con una sola indicación de cómo mandarla. No agrega otro mensaje diciendo que ya la envió."
+  },
+  {
     "question": "Soy estudiante y quiero alquilar sola por $18.000",
     "expected": "Indica el límite de $15.000 por estudiante; no rechaza automáticamente, deriva a Lucía para alternativas."
   },

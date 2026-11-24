@@ -1,6 +1,6 @@
 import { after } from "next/server";
 import { parseWebhook } from "@/lib/whatsapp";
-import { runBotTurn } from "@/lib/bot";
+import { botPause, runBotAfterPause } from "@/lib/bot";
 import { driveConfig } from "@/lib/drive";
 import {
   processCaseFolders,
@@ -14,7 +14,8 @@ import {
 } from "@/lib/whatsapp-server";
 
 export const runtime = "nodejs";
-export const maxDuration = 60;
+// Room for filing documents, the assistant's pause (10–15 s) and its reply.
+export const maxDuration = 120;
 
 // Meta's one-time subscription check: echo hub.challenge only for our verify token.
 export async function GET(req: Request) {
@@ -57,7 +58,9 @@ export async function POST(req: Request) {
   if (!messages.length && !statuses.length) return Response.json({ ok: true });
   // The raw log helps support and replay; it is admin-only and pruned per the retention policy.
   await db.from("wa_webhook_events").insert({ payload });
-  const botConversations = new Set<string>();
+  // Per conversation, the newest client message of this delivery: the assistant answers after a pause,
+  // and only if no newer message arrived meanwhile.
+  const botConversations = new Map<string, string>();
   try {
     for (const s of statuses) {
       const r = await db.rpc("wa_record_status", {
@@ -71,13 +74,17 @@ export async function POST(req: Request) {
     for (const m of messages) {
       const r = await db.rpc("wa_record_inbound", { m });
       if (r.error) throw Error(r.error.message);
-      if (r.data?.bot_active)
-        botConversations.add(String(r.data.conversation_id));
+      if (r.data?.bot_active && r.data.message_id)
+        botConversations.set(
+          String(r.data.conversation_id),
+          String(r.data.message_id),
+        );
     }
   } catch {
     // A 5xx makes Meta redeliver; recording is idempotent by message id.
     return Response.json({ error: "Temporary failure" }, { status: 503 });
   }
+  const readyAt = Date.now() + botPause();
   if (messages.length)
     after(async () => {
       await processOutbox(db, cfg, 10).catch(() => undefined);
@@ -85,8 +92,14 @@ export async function POST(req: Request) {
       // Every file of the batch, not only the first five (several photos often arrive together).
       await drainMedia(db, cfg, driveConfig(), 30000).catch(() => undefined);
       // Documents are filed first so the assistant can confirm them in its reply.
-      for (const id of botConversations)
-        await runBotTurn(db, cfg, id).catch(() => undefined);
+      // The pause runs alongside the filing above; several chats are answered in parallel.
+      await Promise.all(
+        [...botConversations].map(([id, messageId]) =>
+          runBotAfterPause(db, cfg, id, messageId, readyAt).catch(
+            () => undefined,
+          ),
+        ),
+      );
     });
   return Response.json({ ok: true });
 }
